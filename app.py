@@ -409,33 +409,37 @@ def iniciar_estado():
         datos_originales=None, datos_actuales=None, tiempo_carga_ns=None, campo_ordenado=None,
         conteo_metodos={nombre: 0 for nombre, _ in ALGORITMOS.values()},
         reporte_orden=None, csv_guardado=False, aviso_csv=None,
-        metodo_busqueda=None, resultado_busqueda=None, valores_campo={},
+        metodo_busqueda=None, campo_busqueda=None, resultado_busqueda=None, valores_campo={},
     )
     for k, v in por_defecto.items():
         if k not in st.session_state:
             st.session_state[k] = v
 
 
-def cargar_automaticamente():
-    """Carga el CSV a RAM una sola vez por sesión (usa datos.py)."""
-    if st.session_state.datos_actuales is not None:
-        return
-    ruta = BASE_DIR / ARCHIVO_CSV
-    if not ruta.exists():
-        st.warning(f"No se encontró '{ARCHIVO_CSV}' junto a app.py. Súbalo para continuar:")
-        subido = st.file_uploader("Archivo CSV", type="csv")
-        if subido is not None:
-            ruta.write_bytes(subido.getvalue())
-            st.rerun()
-        st.stop()
-    try:
-        datos, t_ns = cargar_datos_ram(str(ruta))
-    except Exception as e:
-        st.error(f"No se pudo cargar el archivo: {e}")
-        st.stop()
+def limpiar_entradas():
+    """Borra lo escrito en las cajas de captura de búsqueda (vuelven a su valor inicial)."""
+    for k in [k for k in st.session_state.keys() if k.startswith("valor_")]:
+        del st.session_state[k]
+
+
+def guardar_datos_cargados(datos, t_ns):
+    """Guarda la carga en st.session_state y deja el programa en su estado inicial (sin ordenar)."""
     st.session_state.datos_originales = datos        # copia intacta, tal como salió del CSV
     st.session_state.datos_actuales = list(datos)    # lista de trabajo (se reemplaza al ordenar)
     st.session_state.tiempo_carga_ns = t_ns
+    st.session_state.campo_ordenado = None
+    st.session_state.conteo_metodos = {nombre: 0 for nombre, _ in ALGORITMOS.values()}
+    st.session_state.reporte_orden = None
+    st.session_state.aviso_csv = None
+    st.session_state.metodo_busqueda = None
+    st.session_state.campo_busqueda = None
+    st.session_state.resultado_busqueda = None
+    st.session_state.valores_campo = {}
+    limpiar_entradas()
+
+
+AVISO_SIN_DATOS = ("Primero debe cargar los datos en memoria RAM: presione el botón "
+                   "📥 Cargar Base de Datos a Memoria RAM.")
 
 
 # ----------------------------------------------------------------------------
@@ -515,9 +519,31 @@ def seccion_encabezado():
 # 2. CARGA EN RAM Y MUESTRA
 # ----------------------------------------------------------------------------
 def seccion_carga_y_muestra():
-    datos = st.session_state.datos_actuales
-    n = len(datos)
     st.header("Carga en RAM y muestra")
+    ruta = BASE_DIR / ARCHIVO_CSV
+    if not ruta.exists():
+        st.warning(f"No se encontró '{ARCHIVO_CSV}' junto a app.py. Súbalo para continuar:")
+        subido = st.file_uploader("Archivo CSV", type="csv")
+        if subido is not None:
+            ruta.write_bytes(subido.getvalue())
+            st.rerun()
+        return
+
+    if st.button("📥 Cargar Base de Datos a Memoria RAM", key="btn_cargar"):
+        try:
+            datos, t_ns = cargar_datos_ram(str(ruta))
+        except Exception as e:
+            st.error(f"No se pudo cargar el archivo: {e}")
+            return
+        guardar_datos_cargados(datos, t_ns)
+
+    datos = st.session_state.datos_actuales
+    if datos is None:
+        st.info("Los datos todavía no están en memoria RAM. Presione el botón para leer "
+                f"'{ARCHIVO_CSV}' y cargarlo a la estructura.")
+        return
+
+    n = len(datos)
     c1, c2, c3 = st.columns(3)
     c1.metric("Registros en RAM", fmt(n))
     c2.metric("Columnas", len(datos[0]))
@@ -546,10 +572,12 @@ def seccion_carga_y_muestra():
 # ----------------------------------------------------------------------------
 def disparar_ordenacion():
     """Callback del botón: corre ANTES de dibujar la página, así las tablas ya salen actualizadas."""
+    if st.session_state.datos_originales is None:
+        return  # la advertencia se muestra en la sección
     # Siempre se ordena una copia fresca de los datos originales (desordenados)
     datos = list(st.session_state.datos_originales)
     n = len(datos)
-    clave = random.randint(1, 3)
+    clave = random.choice([1, 2, 3])
     campo = CAMPOS_CLAVE[clave]
     nombre, funcion = ALGORITMOS[clave]
 
@@ -578,7 +606,9 @@ def disparar_ordenacion():
 def seccion_ordenacion():
     st.header("Disparador aleatorio de ordenación")
     st.button("🎲 Disparador Aleatorio de Ordenación", key="btn_ordenar", on_click=disparar_ordenacion)
-    if st.session_state.reporte_orden:
+    if st.session_state.datos_originales is None:
+        st.warning(AVISO_SIN_DATOS)
+    elif st.session_state.reporte_orden:
         st.success(st.session_state.reporte_orden)
         st.caption(f"Reporte agregado a {BITACORA_ORDENACION}.")
         if st.session_state.aviso_csv:
@@ -613,8 +643,16 @@ def seccion_metodo_alfa():
 # 5. DISPARADOR ALEATORIO DE BÚSQUEDA
 # ----------------------------------------------------------------------------
 def disparar_busqueda():
-    st.session_state.metodo_busqueda = random.choice(["Búsqueda Binaria", "Búsqueda Lineal"])
+    if st.session_state.datos_originales is None:
+        return  # la advertencia se muestra en la sección
+    metodo = random.choice(["Búsqueda Binaria", "Búsqueda Lineal"])
+    campos_disponibles = list(COLUMNAS)  # los 10 campos
+    st.session_state.metodo_busqueda = metodo
+    st.session_state.campo_busqueda = (
+        random.choice(campos_disponibles) if metodo == "Búsqueda Lineal" else None
+    )
     st.session_state.resultado_busqueda = None
+    limpiar_entradas()
 
 
 def ejecutar_busqueda(metodo, campo, valor, valor_txt):
@@ -703,28 +741,42 @@ def ejemplos_reales(campo, cantidad=5):
     return valores
 
 
-def guia_campo_clave(campo):
-    """Muestra el formato esperado y ejemplos reales; devuelve los ejemplos."""
+def formato_campo(campo):
+    if campo in FORMATOS_CLAVE:
+        return FORMATOS_CLAVE[campo]
+    if campo == "edad_meses":
+        edades = [r["edad_meses"] for r in st.session_state.datos_originales]
+        return ("Formato requerido: Número entero de meses sin decimales "
+                f"(Rango en padrón: {min(edades)} a {max(edades)}).")
+    return ("Formato requerido: Texto. No distingue mayúsculas, acentos ni espacios extra "
+            "y acepta coincidencias parciales.")
+
+
+def guia_campo(campo):
+    """Muestra el formato esperado y ejemplos reales de la RAM; devuelve los ejemplos."""
     ejemplos = ejemplos_reales(campo)
     st.info(
-        f"{FORMATOS_CLAVE[campo]}\n\n"
+        f"{formato_campo(campo)}\n\n"
         f"Ejemplos reales en memoria RAM listos para probar: [{', '.join(str(v) for v in ejemplos)}]"
     )
     return ejemplos
 
 
 def limpiar_busqueda():
-    st.session_state.valor_lineal = ""
+    limpiar_entradas()
     st.session_state.resultado_busqueda = None
 
 
 def seccion_busqueda():
     st.header("Disparador aleatorio de búsqueda")
     st.button("🎲 Disparador Aleatorio de Búsqueda", key="btn_buscar_azar", on_click=disparar_busqueda)
+    if st.session_state.datos_originales is None:
+        st.warning(AVISO_SIN_DATOS)
+        return
 
     metodo = st.session_state.metodo_busqueda
     if metodo is None:
-        st.caption("Sortea al azar entre Búsqueda Lineal y Búsqueda Binaria.")
+        st.caption("Sortea al azar el método (Búsqueda Lineal o Binaria) y, en la lineal, también el campo.")
         return
     st.markdown(f"**Método sorteado:** {metodo}")
 
@@ -736,37 +788,36 @@ def seccion_busqueda():
                 "Presione primero el Disparador Aleatorio de Ordenación."
             )
             return
-        st.caption(f"Campo clave ordenado en RAM: {campo}. La búsqueda se hará sobre este campo.")
-        ejemplos = guia_campo_clave(campo)
+        st.caption(f"Campo clave ordenado en RAM (seleccionado automáticamente): {campo}.")
+    else:
+        campo = st.session_state.campo_busqueda
+        st.caption(f"Campo seleccionado aleatoriamente: {campo}.")
+
+    ejemplos = guia_campo(campo)
+    if campo not in CAMPOS_CLAVE.values():
+        st.caption(texto_valores_disponibles(campo))
+
+    if campo in CAMPOS_NUMERICOS:
         valor = st.number_input(
             f"Introduzca el dato a buscar ({campo})", min_value=0, value=int(ejemplos[0]), step=1,
-            format="%d", key=f"valor_binaria_{campo}",
+            format="%d", key=f"valor_{campo}",
         )
-        if st.button("Buscar", key="btn_buscar_bin"):
-            ejecutar_busqueda(metodo, campo, int(valor), str(int(valor)))
     else:
-        actual = st.session_state.campo_ordenado
-        idx = COLUMNAS.index(actual) if actual in COLUMNAS else 0
-        campo = st.selectbox("Campo para la búsqueda", COLUMNAS, index=idx, key="campo_lineal")
-        if campo in CAMPOS_CLAVE.values():
-            guia_campo_clave(campo)
+        valor_txt = st.text_input(f"Introduzca el dato a buscar ({campo})", key=f"valor_{campo}")
+
+    b1, b2, _ = st.columns([1, 2, 4])
+    buscar = b1.button("Buscar", key="btn_buscar")
+    b2.button("Limpiar / Reiniciar búsqueda", key="btn_limpiar", on_click=limpiar_busqueda)
+    if buscar:
+        if campo in CAMPOS_NUMERICOS:
+            ejecutar_busqueda(metodo, campo, int(valor), str(int(valor)))
         else:
-            st.caption(texto_valores_disponibles(campo))
-            if campo not in CAMPOS_NUMERICOS:
-                st.caption("La búsqueda ignora mayúsculas, acentos y espacios extra, "
-                           "y acepta coincidencias parciales.")
-        valor_txt = st.text_input(f"Introduzca el dato a buscar del campo seleccionado ({campo})",
-                                  key="valor_lineal")
-        b1, b2, _ = st.columns([1, 2, 4])
-        buscar = b1.button("Buscar", key="btn_buscar_lin")
-        b2.button("Limpiar / Reiniciar búsqueda", key="btn_limpiar_lin", on_click=limpiar_busqueda)
-        if buscar:
             try:
-                valor = parse_valor(campo, valor_txt)
+                valor_buscado = parse_valor(campo, valor_txt)
             except ValueError as e:
                 st.error(str(e))
             else:
-                ejecutar_busqueda(metodo, campo, valor, valor_txt.strip())
+                ejecutar_busqueda(metodo, campo, valor_buscado, valor_txt.strip())
 
     res = st.session_state.resultado_busqueda
     if res:
@@ -806,7 +857,6 @@ def main():
     st.set_page_config(page_title="Rastreo e Inventario Bovino", page_icon="🐄", layout="wide")
     iniciar_estado()
     seccion_encabezado()
-    cargar_automaticamente()
     seccion_carga_y_muestra()
     st.divider()
     seccion_ordenacion()
