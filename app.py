@@ -399,6 +399,12 @@ ALGORITMOS = {
     2: ("Bucket Sort", bucket_sort),
     3: ("Quick Sort", quick_sort_iterativo),
 }
+CLAVE_DE_CAMPO = {campo: clave for clave, campo in CAMPOS_CLAVE.items()}
+ICONOS = {
+    "siniiga_id": "🆔", "peso_kg": "⚖️", "fecha_vacunacion": "💉", "raza_bovino": "🐂",
+    "estado_origen": "🗺️", "municipio_rancho": "📍", "estatus_exportacion": "🚢",
+    "edad_meses": "🎂", "sexo_bovino": "⚥", "nombre_rancho": "🏡",
+}
 
 
 # ----------------------------------------------------------------------------
@@ -408,8 +414,8 @@ def iniciar_estado():
     por_defecto = dict(
         datos_originales=None, datos_actuales=None, tiempo_carga_ns=None, campo_ordenado=None,
         conteo_metodos={nombre: 0 for nombre, _ in ALGORITMOS.values()},
-        reporte_orden=None, csv_guardado=False, aviso_csv=None,
-        metodo_busqueda=None, campo_busqueda=None, resultado_busqueda=None, valores_campo={},
+        reporte_orden=None, ultima_orden=None, csv_guardado=False, aviso_csv=None,
+        metodo_busqueda=None, resultado_busqueda=None, valores_campo={},
     )
     for k, v in por_defecto.items():
         if k not in st.session_state:
@@ -417,8 +423,9 @@ def iniciar_estado():
 
 
 def limpiar_entradas():
-    """Borra lo escrito en las cajas de captura de búsqueda (vuelven a su valor inicial)."""
-    for k in [k for k in st.session_state.keys() if k.startswith("valor_")]:
+    """Borra lo escrito en las cajas de captura y los selectores de campo de la búsqueda."""
+    for k in [k for k in st.session_state.keys()
+              if k.startswith("valor_") or k.startswith("campo_sel_")]:
         del st.session_state[k]
 
 
@@ -430,9 +437,9 @@ def guardar_datos_cargados(datos, t_ns):
     st.session_state.campo_ordenado = None
     st.session_state.conteo_metodos = {nombre: 0 for nombre, _ in ALGORITMOS.values()}
     st.session_state.reporte_orden = None
+    st.session_state.ultima_orden = None
     st.session_state.aviso_csv = None
     st.session_state.metodo_busqueda = None
-    st.session_state.campo_busqueda = None
     st.session_state.resultado_busqueda = None
     st.session_state.valores_campo = {}
     limpiar_entradas()
@@ -468,38 +475,107 @@ def config_columnas():
     return cfg
 
 
-def mostrar_ficha(registro, fila):
-    filas = "".join(
-        f"<div class='fila'><span class='campo'>{c}:</span> {html.escape(str(registro[c]))}</div>"
-        for c in COLUMNAS
+def tarjeta(icono, titulo, valor, pie="", color="verde", extra=""):
+    """HTML de una tarjeta (card) del dashboard."""
+    return (
+        f"<div class='card card-{color}'><div class='card-ico'>{icono}</div>"
+        f"<div class='card-tit'>{html.escape(str(titulo))}</div>"
+        f"<div class='card-val'>{html.escape(str(valor))}</div>"
+        f"<div class='card-pie'>{html.escape(str(pie))}</div>{extra}</div>"
     )
+
+
+def fila_tarjetas(tarjetas):
+    cols = st.columns(len(tarjetas))
+    for col, t in zip(cols, tarjetas):
+        col.markdown(t, unsafe_allow_html=True)
+
+
+def mostrar_ficha(registro, fila):
+    """Credencial / certificado zoosanitario en 2 columnas con íconos."""
+    items = ""
+    for c in COLUMNAS:
+        marca = "*" if c in CAMPOS_CLAVE.values() else ""
+        items += (
+            f"<div class='cred-item'><div class='cred-ico'>{ICONOS[c]}</div><div>"
+            f"<div class='cred-lbl'>{c}{marca}</div>"
+            f"<div class='cred-val'>{html.escape(str(registro[c]))}</div></div></div>"
+        )
     st.markdown(
-        "<div class='ficha'><div class='ficha-titulo'>INFORMACIÓN DEL REGISTRO LOCALIZADO</div>"
-        f"<div class='ficha-sub'>Ficha del Registro · Fila {fila} en memoria RAM</div>{filas}</div>",
+        "<div class='cred'><div class='cred-head'><div>"
+        "<div class='cred-sup'>CERTIFICADO ZOOSANITARIO · SINIIGA</div>"
+        "<div class='cred-tit'>INFORMACIÓN DEL REGISTRO LOCALIZADO</div></div>"
+        f"<div class='cred-fila'>Ficha del Registro<br><b>Fila {fila}</b> en RAM</div></div>"
+        f"<div class='cred-body'>{items}</div>"
+        "<div class='cred-pie'>🐄 Trazabilidad para exportación · Datos de los catálogos públicos "
+        "SENASICA / SIAP</div></div>",
         unsafe_allow_html=True,
     )
 
 
 CSS = """
 <style>
-.block-container{max-width:1200px;}
-.ficha{border:2px solid #2e7d32;border-radius:10px;padding:14px 18px;margin-top:10px;
-       background:rgba(46,125,50,0.08);}
-.ficha-titulo{font-weight:800;font-size:1.05rem;letter-spacing:.5px;border-bottom:1px solid #2e7d32;
-              padding-bottom:6px;margin-bottom:2px;}
-.ficha-sub{font-size:.8rem;opacity:.75;margin-bottom:8px;}
-.ficha .fila{font-family:monospace;padding:2px 0;}
-.ficha .campo{font-weight:700;display:inline-block;min-width:230px;}
+:root{--verde:#1b5e20;--verde2:#2e7d32;--dorado:#c9a227;--dorado2:#e6c04a;--marron:#8d5524;}
+.block-container{max-width:1200px;padding-top:4.5rem;}
+.hero{background:linear-gradient(120deg,#0f3d1a 0%,#1f7a3a 55%,#b8860b 100%);color:#fff;
+      border-radius:22px;padding:30px 34px;margin-bottom:18px;
+      box-shadow:0 10px 28px rgba(15,61,26,.35);border:1px solid rgba(230,192,74,.6);}
+.hero-sup{letter-spacing:3px;font-size:.78rem;font-weight:700;color:#f6e3a1;}
+.hero-title{font-size:1.9rem;font-weight:800;line-height:1.2;margin:6px 0 8px;
+            text-shadow:0 2px 6px rgba(0,0,0,.35);}
+.hero-sub{font-size:.98rem;opacity:.95;}
+.hero-chips span{display:inline-block;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);
+            border-radius:999px;padding:3px 12px;margin:10px 8px 0 0;font-size:.8rem;font-weight:600;}
+.block-container h2{border-left:7px solid var(--dorado);padding-left:.7rem;margin-top:.4rem;}
+div.stButton>button, div.stDownloadButton>button{
+  background:linear-gradient(135deg,#1b5e20,#2e7d32);color:#fff;border:1px solid rgba(230,192,74,.7);
+  border-radius:12px;font-weight:700;padding:.5rem 1.1rem;box-shadow:0 3px 10px rgba(27,94,32,.3);}
+div.stButton>button:hover, div.stDownloadButton>button:hover{
+  filter:brightness(1.12);border-color:var(--dorado2);color:#fff;transform:translateY(-1px);}
+.card{border-radius:16px;padding:14px 18px;margin:4px 0 10px;
+      box-shadow:0 4px 14px rgba(0,0,0,.14);border:1px solid rgba(46,125,50,.35);
+      border-left:7px solid var(--verde2);background:rgba(46,125,50,.09);}
+.card-dorado{border-color:rgba(201,162,39,.55);border-left-color:var(--dorado);background:rgba(201,162,39,.14);}
+.card-marron{border-color:rgba(141,85,36,.45);border-left-color:var(--marron);background:rgba(141,85,36,.10);}
+.card-ico{font-size:1.5rem;line-height:1;}
+.card-tit{font-size:.78rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;opacity:.75;margin-top:4px;}
+.card-val{font-size:1.65rem;font-weight:800;line-height:1.2;word-break:break-all;}
+.card-pie{font-size:.78rem;opacity:.75;}
+.barra{height:10px;border-radius:999px;background:rgba(128,128,128,.25);margin-top:10px;overflow:hidden;}
+.barra-in{height:100%;border-radius:999px;background:linear-gradient(90deg,#2e7d32,#c9a227);}
+.cred{border-radius:18px;margin:12px 0;overflow:hidden;border:2px solid var(--dorado);
+      box-shadow:0 8px 24px rgba(0,0,0,.2);background:rgba(46,125,50,.07);}
+.cred-head{display:flex;justify-content:space-between;align-items:center;gap:12px;
+           background:linear-gradient(120deg,#0f3d1a,#1f7a3a 60%,#b8860b);color:#fff;padding:14px 20px;}
+.cred-sup{font-size:.72rem;letter-spacing:2px;font-weight:700;color:#f6e3a1;}
+.cred-tit{font-size:1.15rem;font-weight:800;}
+.cred-fila{font-size:.8rem;text-align:right;line-height:1.35;}
+.cred-body{display:grid;grid-template-columns:1fr 1fr;gap:10px 28px;padding:18px 20px;}
+.cred-item{display:flex;gap:12px;align-items:center;padding:8px 12px;border-radius:12px;
+           background:rgba(255,255,255,.06);border:1px solid rgba(46,125,50,.25);}
+.cred-ico{font-size:1.6rem;width:2.2rem;text-align:center;}
+.cred-lbl{font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;opacity:.7;}
+.cred-val{font-size:1.05rem;font-weight:700;font-family:monospace;word-break:break-word;}
+.cred-pie{padding:8px 20px;font-size:.75rem;opacity:.8;border-top:1px dashed rgba(201,162,39,.7);}
+@media (max-width:700px){.cred-body{grid-template-columns:1fr;} .hero-title{font-size:1.4rem;}}
 </style>
 """
 
 
 # ----------------------------------------------------------------------------
-# 1. ENCABEZADO
+# 1. ENCABEZADO (Hero Banner)
 # ----------------------------------------------------------------------------
 def seccion_encabezado():
     st.markdown(CSS, unsafe_allow_html=True)
-    st.title("Proyecto 2: Rastreo e Inventario Bovino para Exportación y Control Zoosanitario")
+    st.markdown(
+        "<div class='hero'><div class='hero-sup'>SADER · SENASICA · SINIIGA</div>"
+        "<div class='hero-title'>Proyecto 2: Rastreo e Inventario Bovino para Exportación "
+        "y Control Zoosanitario</div>"
+        "<div class='hero-sub'>Métodos de ordenación y búsqueda · Trazabilidad ganadera para exportación</div>"
+        "<div class='hero-chips'><span>🐄 15,000 bovinos</span><span>⏱️ Medición en nanosegundos</span>"
+        "<span>🛡️ Sanidad animal</span></div></div>",
+        unsafe_allow_html=True,
+    )
     ruta = BASE_DIR / ARCHIVO_CONTEXTO
     with st.container(border=True):
         if ruta.exists():
@@ -544,14 +620,15 @@ def seccion_carga_y_muestra():
         return
 
     n = len(datos)
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Registros en RAM", fmt(n))
-    c2.metric("Columnas", len(datos[0]))
-    c3.metric("Tiempo de carga (ns)", fmt(st.session_state.tiempo_carga_ns))
+    t = st.session_state.tiempo_carga_ns
+    fila_tarjetas([
+        tarjeta("🐄", "Registros en RAM", fmt(n), "Lista de Diccionarios", "verde"),
+        tarjeta("🗂️", "Columnas", len(datos[0]), "campos por bovino", "verde"),
+        tarjeta("⏱️", "Tiempo de carga en RAM (ns)", fmt(t), "nanosegundos", "dorado"),
+    ])
     st.info(
         f"Se realizó la carga de los {fmt(n)} registros con sus {len(datos[0])} columnas a la estructura "
-        f"[Lista de Diccionarios en RAM] y le tomó [{st.session_state.tiempo_carga_ns}] "
-        "nanosegundos completar la acción."
+        f"[Lista de Diccionarios en RAM] y le tomó [{t}] nanosegundos completar la acción."
     )
 
     campo = st.session_state.campo_ordenado
@@ -570,14 +647,10 @@ def seccion_carga_y_muestra():
 # ----------------------------------------------------------------------------
 # 3. DISPARADOR ALEATORIO DE ORDENACIÓN
 # ----------------------------------------------------------------------------
-def disparar_ordenacion():
-    """Callback del botón: corre ANTES de dibujar la página, así las tablas ya salen actualizadas."""
-    if st.session_state.datos_originales is None:
-        return  # la advertencia se muestra en la sección
-    # Siempre se ordena una copia fresca de los datos originales (desordenados)
+def ejecutar_ordenacion(clave, automatica=False):
+    """Ordena SIEMPRE una copia fresca de los datos originales (desordenados) por el campo `clave`."""
     datos = list(st.session_state.datos_originales)
     n = len(datos)
-    clave = random.choice([1, 2, 3])
     campo = CAMPOS_CLAVE[clave]
     nombre, funcion = ALGORITMOS[clave]
 
@@ -591,8 +664,12 @@ def disparar_ordenacion():
     st.session_state.campo_ordenado = campo
     st.session_state.conteo_metodos[nombre] += 1
     st.session_state.reporte_orden = texto
+    st.session_state.ultima_orden = dict(campo=campo, nombre=nombre, t_ns=t_ns, comps=comps, movs=movs)
     st.session_state.resultado_busqueda = None  # las filas de una búsqueda previa ya no son válidas
-    escribir_bitacora(BITACORA_ORDENACION, texto)
+    escribir_bitacora(
+        BITACORA_ORDENACION,
+        ("[Ordenación automática previa a una Búsqueda Binaria]\n" if automatica else "") + texto,
+    )
 
     if not st.session_state.csv_guardado:
         guardar_csv_ordenado(ordenada)
@@ -601,6 +678,14 @@ def disparar_ordenacion():
             f"Primera ejecución: se guardó '{ARCHIVO_ORDENADO}' con los {fmt(n)} registros "
             f"ordenados por [{campo}]."
         )
+    return nombre, t_ns
+
+
+def disparar_ordenacion():
+    """Callback del botón: corre ANTES de dibujar la página, así las tablas ya salen actualizadas."""
+    if st.session_state.datos_originales is None:
+        return  # la advertencia se muestra en la sección
+    ejecutar_ordenacion(random.choice([1, 2, 3]))
 
 
 def seccion_ordenacion():
@@ -608,7 +693,15 @@ def seccion_ordenacion():
     st.button("🎲 Disparador Aleatorio de Ordenación", key="btn_ordenar", on_click=disparar_ordenacion)
     if st.session_state.datos_originales is None:
         st.warning(AVISO_SIN_DATOS)
-    elif st.session_state.reporte_orden:
+        return
+    u = st.session_state.ultima_orden
+    if u:
+        fila_tarjetas([
+            tarjeta("🎯", "Campo clave · Método", u["campo"], u["nombre"], "verde"),
+            tarjeta("⏱️", "Tiempo (ns)", fmt(u["t_ns"]), "nanosegundos", "dorado"),
+            tarjeta("🔍", "Comparaciones", fmt(u["comps"]), "entre claves", "verde"),
+            tarjeta("🔁", "Movimientos", fmt(u["movs"]), "asignaciones / intercambios", "marron"),
+        ])
         st.success(st.session_state.reporte_orden)
         st.caption(f"Reporte agregado a {BITACORA_ORDENACION}.")
         if st.session_state.aviso_csv:
@@ -623,16 +716,24 @@ def seccion_ordenacion():
 def seccion_metodo_alfa():
     st.header("Panel del Método Alfa")
     conteo = st.session_state.conteo_metodos
+    total = sum(conteo.values())
     maximo = max(conteo.values())
     alfas = [nombre for nombre, v in conteo.items() if v == maximo] if maximo else []
-    cols = st.columns(len(conteo))
-    for col, (nombre, veces) in zip(cols, conteo.items()):
-        with col:
-            with st.container(border=True):
-                es_alfa = nombre in alfas
-                st.metric(("👑 " if es_alfa else "") + nombre, f"{veces} vez/veces")
+    cols = st.columns(len(ALGORITMOS))
+    for col, (clave, (nombre, _)) in zip(cols, ALGORITMOS.items()):
+        veces = conteo[nombre]
+        es_alfa = nombre in alfas
+        ancho = round(veces / maximo * 100) if maximo else 0
+        parte = round(veces / total * 100) if total else 0
+        col.markdown(
+            tarjeta("👑" if es_alfa else "⚙️", nombre + ("  ·  MÉTODO ALFA" if es_alfa else ""), veces,
+                    f"Campo {CAMPOS_CLAVE[clave]} · {parte}% de las ejecuciones",
+                    "dorado" if es_alfa else "verde",
+                    extra=f"<div class='barra'><div class='barra-in' style='width:{ancho}%'></div></div>"),
+            unsafe_allow_html=True,
+        )
     if not alfas:
-        st.write("**Método Alfa:** aún no se ha ejecutado ninguna ordenación.")
+        st.caption("Aún no se ha ejecutado ninguna ordenación.")
     elif len(alfas) == 1:
         st.success(f"👑 Método Alfa actual: **{alfas[0]}** ({maximo} selección(es)).")
     else:
@@ -645,19 +746,14 @@ def seccion_metodo_alfa():
 def disparar_busqueda():
     if st.session_state.datos_originales is None:
         return  # la advertencia se muestra en la sección
-    metodo = random.choice(["Búsqueda Binaria", "Búsqueda Lineal"])
-    campos_disponibles = list(COLUMNAS)  # los 10 campos
-    st.session_state.metodo_busqueda = metodo
-    st.session_state.campo_busqueda = (
-        random.choice(campos_disponibles) if metodo == "Búsqueda Lineal" else None
-    )
+    st.session_state.metodo_busqueda = random.choice(["Búsqueda Binaria", "Búsqueda Lineal"])
     st.session_state.resultado_busqueda = None
     limpiar_entradas()
 
 
-def ejecutar_busqueda(metodo, campo, valor, valor_txt):
-    n = len(st.session_state.datos_actuales)
+def ejecutar_busqueda(metodo, campo, valor, valor_txt, estado_orden=None, aviso=None):
     datos = st.session_state.datos_actuales
+    n = len(datos)
     if metodo == "Búsqueda Binaria":
         fila, reg, todos, t_ns, comps = busqueda_binaria(datos, campo, valor)
         cabecera = (
@@ -666,7 +762,7 @@ def ejecutar_busqueda(metodo, campo, valor, valor_txt):
             f"-> Método de búsqueda seleccionado aleatoriamente: [{metodo}]\n"
             "[VALIDACIÓN DE SEGURIDAD]: Verificando estado físico de la memoria...\n"
             f"El campo clave requerido para la búsqueda es: [{campo}]\n"
-            "Estado del campo en memoria: YA ORDENADO PREVIAMENTE.\n"
+            f"Estado del campo en memoria: {estado_orden or 'YA ORDENADO PREVIAMENTE.'}\n"
             f"Introduzca el dato a buscar ({campo}): {valor_txt}\n"
             "Ejecutando algoritmo de Búsqueda Binaria...\n"
         )
@@ -690,7 +786,10 @@ def ejecutar_busqueda(metodo, campo, valor, valor_txt):
     )
     texto = cabecera + resultado + benchmark
     escribir_bitacora(BITACORA_BUSQUEDA, texto)
-    st.session_state.resultado_busqueda = dict(texto=texto, fila=fila, registro=reg, todos=todos)
+    st.session_state.resultado_busqueda = dict(
+        texto=texto, fila=fila, registro=reg, todos=todos, campo=campo, metodo=metodo,
+        t_ns=t_ns, comps=comps, aviso=aviso,
+    )
 
 
 MAX_VALORES_AYUDA = 40
@@ -776,22 +875,28 @@ def seccion_busqueda():
 
     metodo = st.session_state.metodo_busqueda
     if metodo is None:
-        st.caption("Sortea al azar el método (Búsqueda Lineal o Binaria) y, en la lineal, también el campo.")
+        st.caption("Sortea al azar el método (Búsqueda Lineal o Binaria); después elige el campo donde buscar.")
         return
     st.markdown(f"**Método sorteado:** {metodo}")
 
+    ordenado = st.session_state.campo_ordenado
     if metodo == "Búsqueda Binaria":
-        campo = st.session_state.campo_ordenado
-        if campo is None:
+        opciones = list(CAMPOS_CLAVE.values())  # solo los 3 campos clave
+        idx = opciones.index(ordenado) if ordenado in opciones else 0
+        campo = st.selectbox("Campo clave donde desea buscar", opciones, index=idx, key="campo_sel_binaria")
+        if campo != ordenado:
+            nombre = ALGORITMOS[CLAVE_DE_CAMPO[campo]][0]
+            actual = f"(ahora está ordenado por [{ordenado}])" if ordenado else "(aún no se ha ordenado nada)"
             st.warning(
-                "[VALIDACIÓN DE SEGURIDAD]: la Búsqueda Binaria requiere datos ordenados. "
-                "Presione primero el Disparador Aleatorio de Ordenación."
+                f"El campo [{campo}] no está ordenado en RAM {actual}. Al presionar Buscar se ordenará "
+                f"automáticamente con {nombre} y enseguida se ejecutará la Búsqueda Binaria."
             )
-            return
-        st.caption(f"Campo clave ordenado en RAM (seleccionado automáticamente): {campo}.")
+        else:
+            st.caption(f"✔ [{campo}] ya está ordenado en memoria RAM.")
     else:
-        campo = st.session_state.campo_busqueda
-        st.caption(f"Campo seleccionado aleatoriamente: {campo}.")
+        opciones = list(COLUMNAS)  # las 10 columnas
+        idx = opciones.index(ordenado) if ordenado in opciones else 0
+        campo = st.selectbox("Campo donde desea buscar", opciones, index=idx, key="campo_sel_lineal")
 
     ejemplos = guia_campo(campo)
     if campo not in CAMPOS_CLAVE.values():
@@ -808,19 +913,37 @@ def seccion_busqueda():
     b1, b2, _ = st.columns([1, 2, 4])
     buscar = b1.button("Buscar", key="btn_buscar")
     b2.button("Limpiar / Reiniciar búsqueda", key="btn_limpiar", on_click=limpiar_busqueda)
+
     if buscar:
         if campo in CAMPOS_NUMERICOS:
-            ejecutar_busqueda(metodo, campo, int(valor), str(int(valor)))
+            valor_buscado, texto_valor = int(valor), str(int(valor))
         else:
             try:
-                valor_buscado = parse_valor(campo, valor_txt)
+                valor_buscado, texto_valor = parse_valor(campo, valor_txt), valor_txt.strip()
             except ValueError as e:
                 st.error(str(e))
-            else:
-                ejecutar_busqueda(metodo, campo, valor_buscado, valor_txt.strip())
+                return
+        estado, aviso = None, None
+        reordenado = metodo == "Búsqueda Binaria" and campo != st.session_state.campo_ordenado
+        if reordenado:  # la binaria siempre debe trabajar sobre el campo ordenado
+            nombre, t_orden = ejecutar_ordenacion(CLAVE_DE_CAMPO[campo], automatica=True)
+            estado = (f"NO ESTABA ORDENADO. Se ordenó automáticamente con [{nombre}] "
+                      f"en [{t_orden}] nanosegundos.")
+            aviso = (f"Se ordenó automáticamente por [{campo}] con {nombre} en {fmt(t_orden)} ns "
+                     "antes de ejecutar la Búsqueda Binaria.")
+        ejecutar_busqueda(metodo, campo, valor_buscado, texto_valor, estado, aviso)
+        if reordenado:
+            st.rerun()  # refresca las tablas y el Método Alfa con el nuevo orden
 
     res = st.session_state.resultado_busqueda
-    if res:
+    if res and res["campo"] == campo and res["metodo"] == metodo:
+        if res["aviso"]:
+            st.info("🔄 " + res["aviso"])
+        fila_tarjetas([
+            tarjeta("🔎", "Método · Campo", res["metodo"], res["campo"], "verde"),
+            tarjeta("⏱️", "Tiempo (ns)", fmt(res["t_ns"]), "nanosegundos", "dorado"),
+            tarjeta("⚖️", "Comparaciones", fmt(res["comps"]), "hasta localizar el dato", "marron"),
+        ])
         st.code(res["texto"], language="text")
         if res["fila"] is None:
             st.warning("No se localizó ningún registro con ese dato.")
@@ -835,22 +958,24 @@ def seccion_busqueda():
 
 
 # ----------------------------------------------------------------------------
-# DESCARGAS (archivos generados)
+# 6. DESCARGAS
 # ----------------------------------------------------------------------------
 def seccion_descargas():
-    generados = [(n, m) for n, m in [
-        (BITACORA_ORDENACION, "text/plain"),
-        (BITACORA_BUSQUEDA, "text/plain"),
-        (ARCHIVO_ORDENADO, "text/csv"),
-    ] if (BASE_DIR / n).exists()]
-    if not generados:
-        return
     st.divider()
-    st.subheader("Archivos generados")
-    cols = st.columns(len(generados))
-    for col, (nombre, mime) in zip(cols, generados):
-        col.download_button(f"⬇ {nombre}", data=(BASE_DIR / nombre).read_bytes(),
-                            file_name=nombre, mime=mime, key=f"dl_{nombre}")
+    st.header("Descargas")
+    archivos = [
+        (BITACORA_ORDENACION, "text/plain", "Bitácora de ordenación"),
+        (BITACORA_BUSQUEDA, "text/plain", "Bitácora de búsqueda"),
+        (ARCHIVO_ORDENADO, "text/csv", "CSV ya ordenado"),
+    ]
+    cols = st.columns(len(archivos))
+    for col, (nombre, mime, etiqueta) in zip(cols, archivos):
+        ruta = BASE_DIR / nombre
+        if ruta.exists():
+            col.download_button(f"⬇ {etiqueta} ({nombre})", data=ruta.read_bytes(), file_name=nombre,
+                                mime=mime, key=f"dl_{nombre}")
+        else:
+            col.caption(f"{etiqueta} ({nombre}): aún no se genera. Ejecute la ordenación o la búsqueda.")
 
 
 def main():
