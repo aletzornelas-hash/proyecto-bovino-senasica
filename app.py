@@ -8,10 +8,14 @@ Archivos necesarios en la misma carpeta: app.py, datos.py, contexto.txt y ganado
 
 import csv
 from datetime import datetime
+import hashlib
+import hmac
 import html
 import json
+import os
 from pathlib import Path
 import random
+import secrets
 import sys
 import time
 import unicodedata
@@ -36,6 +40,7 @@ BITACORA_ORDENACION = "bitacora_ordenacion.txt"
 BITACORA_BUSQUEDA = "bitacora_busqueda.txt"
 BITACORA_GLOBAL = "registro_global_visitas.txt"
 ARCHIVO_ALFA_GLOBAL = "alfa_global.json"
+ARCHIVO_USUARIOS = "usuarios.json"
 ARCHIVO_CONTEXTO = "contexto.txt"
 
 COLUMNAS = [
@@ -505,17 +510,8 @@ def limpiar_entradas():
 
 
 def cerrar_sesion():
-    st.session_state.usuario_activo = None
-    st.session_state.hora_login = None
-    st.session_state.conteo_metodos = {
-        nombre: 0 for nombre, _ in ALGORITMOS.values()
-    }
-    st.session_state.historial_personal = []
-    st.session_state.reporte_orden = None
-    st.session_state.ultima_orden = None
-    st.session_state.metodo_busqueda = None
-    st.session_state.resultado_busqueda = None
-    limpiar_entradas()
+    """Cierra la sesión y borra todo lo de este navegador (datos en RAM, Método Alfa personal, historial)."""
+    st.session_state.clear()
 
 
 def reiniciar_alfa_personal():
@@ -852,8 +848,92 @@ def mostrar_ficha(registro, fila):
 
 
 # ----------------------------------------------------------------------------
-# PANTALLA DE INICIO DE SESIÓN (LOGIN)
+# USUARIOS (usuarios.json con contraseñas cifradas con SHA-256 + sal)
 # ----------------------------------------------------------------------------
+USUARIO_INVITADO = "Invitado"
+
+
+def normalizar_usuario(usuario):
+    return " ".join((usuario or "").strip().split())
+
+
+def hash_password(password, sal):
+    return hashlib.sha256((sal + password).encode("utf-8")).hexdigest()
+
+
+def leer_usuarios():
+    """Devuelve el dict de usuarios ({} si aún no existe) o None si usuarios.json está dañado."""
+    ruta = BASE_DIR / ARCHIVO_USUARIOS
+    if not ruta.exists():
+        return {}
+    try:
+        datos = json.loads(ruta.read_text(encoding="utf-8"))
+        return datos if isinstance(datos, dict) else None
+    except Exception:
+        return None
+
+
+def guardar_usuarios(usuarios):
+    ruta = BASE_DIR / ARCHIVO_USUARIOS
+    tmp = ruta.with_name(ARCHIVO_USUARIOS + ".tmp")
+    tmp.write_text(json.dumps(usuarios, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, ruta)  # escritura atómica
+
+
+def registrar_usuario(usuario, password, confirmar):
+    """Crea la cuenta. Devuelve (ok, mensaje)."""
+    nombre = normalizar_usuario(usuario)
+    if not nombre or not password or not confirmar:
+        return False, "Complete los tres campos: Usuario, Contraseña y Confirmar Contraseña."
+    if password != confirmar:
+        return False, "Las contraseñas no coinciden."
+    clave = nombre.casefold()
+    if clave == USUARIO_INVITADO.casefold():
+        return False, f"El nombre «{USUARIO_INVITADO}» está reservado para el modo invitado."
+    usuarios = leer_usuarios()
+    if usuarios is None:
+        return False, f"No se puede leer '{ARCHIVO_USUARIOS}' (archivo dañado). Avise al administrador."
+    if clave in usuarios:
+        return False, f"El usuario «{nombre}» ya existe. Elija otro nombre."
+    sal = secrets.token_hex(16)
+    usuarios[clave] = {
+        "usuario": nombre,
+        "sal": sal,
+        "sha256": hash_password(password, sal),
+        "creado": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    guardar_usuarios(usuarios)
+    return True, nombre
+
+
+def validar_credenciales(usuario, password):
+    """Devuelve el nombre de usuario registrado si las credenciales coinciden, o None."""
+    usuarios = leer_usuarios() or {}
+    reg = usuarios.get(normalizar_usuario(usuario).casefold())
+    if not reg or not password:
+        return None
+    esperado = reg.get("sha256", "")
+    if hmac.compare_digest(hash_password(password, reg.get("sal", "")), esperado):
+        return reg.get("usuario", normalizar_usuario(usuario))
+    return None
+
+
+# ----------------------------------------------------------------------------
+# PANTALLA DE ACCESO: INICIAR SESIÓN / REGISTRAR USUARIO / INVITADO
+# ----------------------------------------------------------------------------
+def iniciar_sesion(nombre, detalle):
+    """Abre una sesión nueva: Método Alfa personal en cero e historial vacío."""
+    st.session_state.usuario_activo = nombre
+    st.session_state.hora_login = datetime.now().strftime("%H:%M:%S")
+    st.session_state.conteo_metodos = {n: 0 for n, _ in ALGORITMOS.values()}
+    st.session_state.historial_personal = []
+    registrar_evento("Inicio de Sesión", detalle, 0)
+
+
+def entrar_como_invitado():
+    iniciar_sesion(USUARIO_INVITADO, "Ingreso como Invitado (sesión temporal)")
+
+
 def pantalla_login():
     st.markdown(CSS, unsafe_allow_html=True)
     _, col_centro, _ = st.columns([1, 1.6, 1])
@@ -862,43 +942,59 @@ def pantalla_login():
             "<div class='login-box'>"
             "<div class='hero-sup'>SISTEMA NACIONAL SINIIGA · SENASICA</div>"
             "<div class='login-title'>🔐 CONTROL DE ACCESO OPERATIVO</div>"
-            "<p style='color:#94a3b8;margin-bottom:0;'>Ingrese su Nombre y Apellido para habilitar "
-            "su consola de telemetría en memoria RAM y contabilizar su Método Alfa personal.</p>"
+            "<p style='color:#94a3b8;margin-bottom:0;'>Inicie sesión con su cuenta, regístrese como nuevo "
+            "operador o entre como invitado para habilitar su consola de telemetría en memoria RAM "
+            "y contabilizar su Método Alfa personal.</p>"
             "</div>",
             unsafe_allow_html=True,
         )
-        with st.form("form_login", clear_on_submit=False):
-            nombre = st.text_input("Nombre(s)", placeholder="Ej. Alejandro")
-            apellido = st.text_input(
-                "Apellidos", placeholder="Ej. Martín del Campo"
-            )
-            entrar = st.form_submit_button(
-                "🚀 INICIAR SESIÓN EN EL SISTEMA", use_container_width=True
-            )
+        tab_login, tab_registro = st.tabs(["🔑 Iniciar Sesión", "📝 Registrar Usuario"])
+
+        with tab_login:
+            with st.form("form_login", clear_on_submit=False):
+                usuario = st.text_input("Usuario", key="login_usuario")
+                password = st.text_input("Contraseña", type="password", key="login_password")
+                entrar = st.form_submit_button(
+                    "🚀 INICIAR SESIÓN", key="btn_login", use_container_width=True
+                )
             if entrar:
-                nom_limpio = " ".join(nombre.strip().split()).title()
-                ape_limpio = " ".join(apellido.strip().split()).title()
-                if not nom_limpio or not ape_limpio:
-                    st.error(
-                        "⚠️ Por favor ingrese tanto su Nombre como su Apellido para acceder."
+                if not normalizar_usuario(usuario) or not password:
+                    st.error("⚠️ Ingrese su Usuario y su Contraseña.")
+                elif leer_usuarios() is None:
+                    st.error(f"No se puede leer '{ARCHIVO_USUARIOS}' (archivo dañado). Avise al administrador.")
+                else:
+                    nombre = validar_credenciales(usuario, password)
+                    if nombre is None:
+                        st.error("⚠️ Usuario o contraseña incorrectos.")
+                    else:
+                        iniciar_sesion(nombre, "Ingreso autorizado a la consola")
+                        st.rerun()
+
+        with tab_registro:
+            with st.form("form_registro", clear_on_submit=True):
+                nuevo_usuario = st.text_input("Usuario", key="reg_usuario")
+                nueva_pass = st.text_input("Contraseña", type="password", key="reg_password")
+                confirmar = st.text_input("Confirmar Contraseña", type="password", key="reg_confirmar")
+                crear = st.form_submit_button(
+                    "✅ CREAR CUENTA", key="btn_registrar", use_container_width=True
+                )
+            if crear:
+                ok, mensaje = registrar_usuario(nuevo_usuario, nueva_pass, confirmar)
+                if ok:
+                    st.success(
+                        f"✅ Cuenta «{mensaje}» creada correctamente. Ahora vaya a la pestaña "
+                        "«Iniciar Sesión» para entrar."
                     )
                 else:
-                    st.session_state.usuario_activo = (
-                        f"{nom_limpio} {ape_limpio}"
-                    )
-                    st.session_state.hora_login = datetime.now().strftime(
-                        "%H:%M:%S"
-                    )
-                    st.session_state.conteo_metodos = {
-                        n: 0 for n, _ in ALGORITMOS.values()
-                    }
-                    st.session_state.historial_personal = []
-                    registrar_evento(
-                        "Inicio de Sesión",
-                        "Ingreso autorizado a la consola",
-                        0,
-                    )
-                    st.rerun()
+                    st.error(f"⚠️ {mensaje}")
+
+        st.button(
+            "👤 Iniciar Sesión como Invitado",
+            key="btn_invitado",
+            on_click=entrar_como_invitado,
+            use_container_width=True,
+        )
+        st.caption("El modo invitado usa una sesión temporal con su Método Alfa personal en cero.")
 
 
 # ----------------------------------------------------------------------------
