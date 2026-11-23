@@ -3,7 +3,7 @@ MÉTODOS DE ORDENACIÓN Y BÚSQUEDA
 Proyecto 2: Rastreo e Inventario Bovino para Exportación y Control Zoosanitario
 
 Ejecutar con:  streamlit run app.py
-Archivos necesarios en la misma carpeta: app.py, datos.py, contexto.txt, ganado_30000.csv
+Archivos necesarios en la misma carpeta: app.py, datos.py, contexto.txt y ganado_15000.csv y/o ganado_30000.csv
 """
 
 import csv
@@ -27,16 +27,16 @@ from datos import cargar_datos_ram  # noqa: E402
 # ----------------------------------------------------------------------------
 # CONSTANTES Y ARCHIVOS
 # ----------------------------------------------------------------------------
-ARCHIVO_CSV_30K = "ganado_30000.csv"
-ARCHIVO_CSV_15K = "ganado_15000.csv"
-ARCHIVO_ORDENADO = "ganado_30000_ordenado.csv"
+# Bases de datos disponibles: (archivo, etiqueta del botón)
+DATASETS = [
+    ("ganado_15000.csv", "15,000"),
+    ("ganado_30000.csv", "30,000"),
+]
 BITACORA_ORDENACION = "bitacora_ordenacion.txt"
 BITACORA_BUSQUEDA = "bitacora_busqueda.txt"
 BITACORA_GLOBAL = "registro_global_visitas.txt"
 ARCHIVO_ALFA_GLOBAL = "alfa_global.json"
 ARCHIVO_CONTEXTO = "contexto.txt"
-
-MUESTRA_REGISTROS = 60  # Primeros 60 y últimos 60
 
 COLUMNAS = [
     "siniiga_id",
@@ -61,15 +61,14 @@ def fmt(n):
     return f"{n:,}"
 
 
-def obtener_ruta_csv():
-    """Busca primero ganado_30000.csv y si no existe usa ganado_15000.csv como respaldo."""
-    r30 = BASE_DIR / ARCHIVO_CSV_30K
-    if r30.exists():
-        return r30
-    r15 = BASE_DIR / ARCHIVO_CSV_15K
-    if r15.exists():
-        return r15
-    return r30
+def tamano_muestra(n):
+    """15,000 registros (o menos): 30 + 30. Más de 15,000 (p. ej. 30,000): 60 + 60."""
+    return 30 if n <= 15000 else 60
+
+
+def archivo_ordenado():
+    """Nombre del CSV ordenado según la cantidad real de registros cargados (len(datos))."""
+    return st.session_state.get("archivo_ordenado") or "ganado_N_ordenado.csv"
 
 
 # ----------------------------------------------------------------------------
@@ -438,14 +437,15 @@ def escribir_bitacora(nombre_archivo, texto):
     with open(BASE_DIR / nombre_archivo, "a", encoding="utf-8") as f:
         f.write("=" * 90 + "\n")
         f.write(
-            f"Fecha y hora: {datetime.now():%Y-%m-%d %H:%M:%S} | Operador: {usuario}\n"
+            f"Fecha y hora: {datetime.now():%Y-%m-%d %H:%M:%S} | Operador: {usuario} | "
+            f"Dataset: {st.session_state.get('dataset_activo') or 'N/D'}\n"
         )
         f.write(texto.strip("\n") + "\n\n")
 
 
 def guardar_csv_ordenado(registros):
     with open(
-        BASE_DIR / ARCHIVO_ORDENADO, "w", newline="", encoding="utf-8-sig"
+        BASE_DIR / archivo_ordenado(), "w", newline="", encoding="utf-8-sig"
     ) as f:
         w = csv.DictWriter(f, fieldnames=COLUMNAS, extrasaction="ignore")
         w.writeheader()
@@ -475,6 +475,9 @@ def iniciar_estado():
         hora_login=None,
         datos_originales=None,
         datos_actuales=None,
+        dataset_activo=None,
+        archivo_ordenado=None,
+        error_carga=None,
         tiempo_carga_ns=None,
         campo_ordenado=None,
         conteo_metodos={nombre: 0 for nombre, _ in ALGORITMOS.values()},
@@ -521,9 +524,12 @@ def reiniciar_alfa_personal():
     }
 
 
-def guardar_datos_cargados(datos, t_ns):
+def guardar_datos_cargados(datos, t_ns, nombre_archivo):
     st.session_state.datos_originales = datos
     st.session_state.datos_actuales = list(datos)
+    st.session_state.dataset_activo = nombre_archivo
+    st.session_state.archivo_ordenado = f"ganado_{len(datos)}_ordenado.csv"
+    st.session_state.csv_guardado = False  # el CSV ordenado es por dataset
     st.session_state.tiempo_carga_ns = t_ns
     st.session_state.campo_ordenado = None
     st.session_state.reporte_orden = None
@@ -535,14 +541,14 @@ def guardar_datos_cargados(datos, t_ns):
     limpiar_entradas()
     registrar_evento(
         "Carga a RAM",
-        f"Cargados {fmt(len(datos))} registros en Lista de Diccionarios",
+        f"Archivo: {nombre_archivo} | Cargados {fmt(len(datos))} registros en Lista de Diccionarios",
         t_ns,
     )
 
 
 AVISO_SIN_DATOS = (
     "⚠️ Primero debe cargar los datos en memoria RAM: vaya a la Ventana 1 y presione "
-    "📥 Cargar Base de Datos a Memoria RAM."
+    "uno de los botones 📥 Cargar Base de 15,000 / 30,000 Registros."
 )
 
 
@@ -919,21 +925,49 @@ def seccion_encabezado():
             use_container_width=True,
         )
 
+    datos_hero = st.session_state.datos_actuales
+    if datos_hero:
+        m_hero = tamano_muestra(len(datos_hero))
+        chip_bovinos = f"🐄 {fmt(len(datos_hero))} BOVINOS"
+        chip_muestra = f"📊 MUESTRA {m_hero} + {m_hero}"
+    else:
+        chip_bovinos = "🐄 BASE: 15,000 O 30,000 BOVINOS"
+        chip_muestra = "📊 MUESTRA 30 + 30 / 60 + 60"
     st.markdown(
         "<div class='hero'><div class='hero-sup'>SADER · SENASICA · SINIIGA · PADRÓN NACIONAL (32 ESTADOS)</div>"
         "<div class='hero-title'>PROYECTO 2: RASTREO E INVENTARIO BOVINO PARA EXPORTACIÓN</div>"
         "<div class='hero-sub'>Consola de Telemetría en Memoria RAM · Algoritmos de Ordenación y Búsqueda</div>"
-        "<div class='hero-chips'><span>🐄 30,000 BOVINOS</span><span>🗺️ 32 ESTADOS DE LA REPÚBLICA</span>"
-        "<span>⏱️ NANOSEGUNDOS (ns)</span><span>📊 MUESTRA 60 + 60</span></div></div>",
+        f"<div class='hero-chips'><span>{chip_bovinos}</span><span>🗺️ 32 ESTADOS DE LA REPÚBLICA</span>"
+        f"<span>⏱️ NANOSEGUNDOS (ns)</span><span>{chip_muestra}</span></div></div>",
         unsafe_allow_html=True,
     )
 
 
 # ----------------------------------------------------------------------------
-# VENTANA 1: CARGA EN RAM Y MUESTRA (60 + 60)
+# VENTANA 1: CARGA EN RAM Y MUESTRA (30 + 30 para 15K, 60 + 60 para 30K)
 # ----------------------------------------------------------------------------
+def cargar_dataset(nombre_archivo):
+    """Callback de los botones de carga: se ejecuta antes de dibujar la página."""
+    st.session_state.error_carga = None
+    ruta = BASE_DIR / nombre_archivo
+    if not ruta.exists():
+        st.session_state.error_carga = f"No se encontró '{nombre_archivo}' junto a app.py."
+        return
+    try:
+        datos, t_ns = cargar_datos_ram(str(ruta))
+    except Exception as e:
+        st.session_state.error_carga = f"No se pudo cargar '{nombre_archivo}': {e}"
+        return
+    guardar_datos_cargados(datos, t_ns, nombre_archivo)
+
+
 def seccion_carga_y_muestra():
-    st.subheader("🖥️ Infraestructura de Carga en Memoria RAM y Muestra (60 + 60)")
+    datos = st.session_state.datos_actuales
+    if datos:
+        m = tamano_muestra(len(datos))
+        st.subheader(f"🖥️ Infraestructura de Carga en Memoria RAM y Muestra ({m} + {m})")
+    else:
+        st.subheader("🖥️ Infraestructura de Carga en Memoria RAM y Muestra")
 
     ruta_contexto = BASE_DIR / ARCHIVO_CONTEXTO
     with st.expander(
@@ -942,7 +976,6 @@ def seccion_carga_y_muestra():
     ):
         if ruta_contexto.exists():
             texto_ctx = ruta_contexto.read_text(encoding="utf-8-sig")
-            # Ajustar menciones antiguas de 15,000 o 5 estados si venían en contexto.txt
             for linea in texto_ctx.splitlines():
                 linea = linea.strip()
                 if not linea:
@@ -953,35 +986,46 @@ def seccion_carga_y_muestra():
                 "Padrón Nacional Zoosanitario de los 32 Estados de la República Mexicana para exportación bovina."
             )
 
-    ruta = obtener_ruta_csv()
-    if not ruta.exists():
-        st.warning(
-            f"No se encontró '{ARCHIVO_CSV_30K}' junto a app.py. Súbalo aquí para continuar:"
-        )
-        subido = st.file_uploader("Subir archivo CSV de ganado", type="csv")
-        if subido is not None:
-            (BASE_DIR / ARCHIVO_CSV_30K).write_bytes(subido.getvalue())
-            st.rerun()
-        return
+    # Dos botones independientes: si falta un CSV, solo ese botón queda deshabilitado con su advertencia.
+    columnas = st.columns(2)
+    for col, (nombre, etiqueta) in zip(columnas, DATASETS):
+        with col:
+            existe = (BASE_DIR / nombre).exists()
+            st.button(
+                f"📥 Cargar Base de {etiqueta} Registros ({nombre})",
+                key=f"btn_cargar_{nombre}",
+                on_click=cargar_dataset,
+                args=(nombre,),
+                disabled=not existe,
+                use_container_width=True,
+            )
+            if st.session_state.dataset_activo == nombre:
+                st.caption("✅ Base activa en memoria RAM")
+            if not existe:
+                st.warning(
+                    f"No se encontró '{nombre}' junto a app.py. Colóquelo en la carpeta de la app "
+                    "o súbalo aquí para habilitar este botón."
+                )
+                subido = st.file_uploader(
+                    f"Subir {nombre}", type="csv", key=f"subir_{nombre}"
+                )
+                if subido is not None:
+                    (BASE_DIR / nombre).write_bytes(subido.getvalue())
+                    st.rerun()
 
-    if st.button("📥 Cargar Base de Datos a Memoria RAM", key="btn_cargar"):
-        try:
-            datos, t_ns = cargar_datos_ram(str(ruta))
-        except Exception as e:
-            st.error(f"No se pudo cargar el archivo: {e}")
-            return
-        guardar_datos_cargados(datos, t_ns)
+    if st.session_state.error_carga:
+        st.error(st.session_state.error_carga)
 
-    datos = st.session_state.datos_actuales
     if datos is None:
         st.info(
-            f"Los datos todavía no están en memoria RAM. Presione el botón superior para leer "
-            f"'{ruta.name}' y cargarlo a la estructura de Lista de Diccionarios."
+            "Los datos todavía no están en memoria RAM. Presione uno de los dos botones superiores "
+            "para leer el archivo y cargarlo a la estructura de Lista de Diccionarios."
         )
         return
 
     n = len(datos)
     t = st.session_state.tiempo_carga_ns
+    archivo = st.session_state.dataset_activo
     estados_unicos = len({r["estado_origen"] for r in datos})
 
     fila_tarjetas([
@@ -989,7 +1033,7 @@ def seccion_carga_y_muestra():
             "🐄",
             "Registros en RAM",
             fmt(n),
-            f"Archivo: {ruta.name}",
+            f"Archivo: {archivo}",
             "verde",
         ),
         tarjeta(
@@ -1025,14 +1069,15 @@ def seccion_carga_y_muestra():
         if campo
         else "⚡ Orden actual en RAM: original del archivo CSV (sin ordenar). Los campos clave llevan *."
     )
+    m = tamano_muestra(n)
     cfg = config_columnas()
-    st.markdown(f"#### 🔹 Primeros {MUESTRA_REGISTROS} registros en RAM (Reg# 1 a {MUESTRA_REGISTROS})")
-    mostrar_df(construir_tabla(datos[:MUESTRA_REGISTROS], 1), cfg)
+    st.markdown(f"#### 🔹 Primeros {m} registros en RAM (Reg# 1 a {m})")
+    mostrar_df(construir_tabla(datos[:m], 1), cfg)
 
     st.markdown(
-        f"#### 🔸 Últimos {MUESTRA_REGISTROS} registros en RAM (Reg# {max(1, n - MUESTRA_REGISTROS + 1)} a {n})"
+        f"#### 🔸 Últimos {m} registros en RAM (Reg# {max(1, n - m + 1)} a {n})"
     )
-    ultimos = datos[-MUESTRA_REGISTROS:]
+    ultimos = datos[-m:]
     mostrar_df(construir_tabla(ultimos, n - len(ultimos) + 1), cfg)
 
 
@@ -1081,7 +1126,7 @@ def ejecutar_ordenacion(clave, automatica=False):
         guardar_csv_ordenado(ordenada)
         st.session_state.csv_guardado = True
         st.session_state.aviso_csv = (
-            f"Primera ejecución: se guardó '{ARCHIVO_ORDENADO}' con los {fmt(n)} registros "
+            f"Primera ejecución: se guardó '{archivo_ordenado()}' con los {fmt(n)} registros "
             f"ordenados por [{campo}]."
         )
     return nombre, t_ns
@@ -1570,7 +1615,7 @@ def seccion_bitacoras_y_descargas():
             (BITACORA_ORDENACION, "text/plain", "Bitácora de Ordenación"),
             (BITACORA_BUSQUEDA, "text/plain", "Bitácora de Búsqueda"),
             (BITACORA_GLOBAL, "text/plain", "Bitácora Global de Usuarios"),
-            (ARCHIVO_ORDENADO, "text/csv", "CSV Ordenado"),
+            (archivo_ordenado(), "text/csv", "CSV Ordenado"),
         ]
         cols = st.columns(2)
         for i, (nombre, mime, etiqueta) in enumerate(archivos):
@@ -1596,7 +1641,7 @@ def seccion_bitacoras_y_descargas():
 # ----------------------------------------------------------------------------
 def main():
     st.set_page_config(
-        page_title="Telemetría Bovina SENASICA · 30K",
+        page_title="Telemetría Bovina SENASICA",
         page_icon="🐄",
         layout="wide",
     )
@@ -1609,7 +1654,7 @@ def main():
     seccion_encabezado()
 
     v1, v2, v3, v4 = st.tabs([
-        "🖥️ 1. Carga RAM y Muestra (60+60)",
+        "🖥️ 1. Carga RAM y Muestra",
         "⚡ 2. Ordenación y Método Alfa",
         "🔍 3. Radar de Búsqueda",
         "📜 4. Bitácoras y Descargas",
@@ -1627,5 +1672,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-  
-          
