@@ -66,9 +66,12 @@ def fmt(n):
     return f"{n:,}"
 
 
+MUESTRA_REGISTROS = 60  # primeros 60 y últimos 60, sin importar la base cargada
+
+
 def tamano_muestra(n):
-    """15,000 registros (o menos): 30 + 30. Más de 15,000 (p. ej. 30,000): 60 + 60."""
-    return 30 if n <= 15000 else 60
+    """Siempre 60 + 60 (con menos de 60 registros se muestran todos)."""
+    return min(MUESTRA_REGISTROS, n)
 
 
 def archivo_ordenado():
@@ -1028,7 +1031,7 @@ def seccion_encabezado():
         chip_muestra = f"📊 MUESTRA {m_hero} + {m_hero}"
     else:
         chip_bovinos = "🐄 BASE: 15,000 O 30,000 BOVINOS"
-        chip_muestra = "📊 MUESTRA 30 + 30 / 60 + 60"
+        chip_muestra = f"📊 MUESTRA {MUESTRA_REGISTROS} + {MUESTRA_REGISTROS}"
     st.markdown(
         "<div class='hero'><div class='hero-sup'>SADER · SENASICA · SINIIGA · PADRÓN NACIONAL (32 ESTADOS)</div>"
         "<div class='hero-title'>PROYECTO 2: RASTREO E INVENTARIO BOVINO PARA EXPORTACIÓN</div>"
@@ -1040,7 +1043,7 @@ def seccion_encabezado():
 
 
 # ----------------------------------------------------------------------------
-# VENTANA 1: CARGA EN RAM Y MUESTRA (30 + 30 para 15K, 60 + 60 para 30K)
+# VENTANA 1: CARGA EN RAM Y MUESTRA (60 + 60)
 # ----------------------------------------------------------------------------
 def cargar_dataset(nombre_archivo):
     """Callback de los botones de carga: se ejecuta antes de dibujar la página."""
