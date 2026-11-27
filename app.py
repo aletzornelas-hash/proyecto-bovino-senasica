@@ -2009,7 +2009,7 @@ def seccion_bitacoras_y_descargas():
 
 
 # ----------------------------------------------------------------------------
-# VENTANA 5: REFERENCIAS Y AUTORES
+# VENTANA 5: REFERENCIAS (APA 7ª EDICIÓN) Y AUTORES
 # ----------------------------------------------------------------------------
 def seccion_referencias_y_autores():
     st.subheader("📚 Referencias Oficiales y Equipo de Desarrollo")
@@ -2051,14 +2051,18 @@ def seccion_referencias_y_autores():
     ])
 
     st.divider()
-    st.markdown("#### 🏛️ Referencias y Fuentes de Datos Oficiales")
+    st.markdown("#### 🏛️ Referencias Bibliográficas (Formato APA 7ª Edición)")
     st.markdown(
         """
-- **SENASICA** — Servicio Nacional de Sanidad, Inocuidad y Calidad Agroalimentaria (`gob.mx/senasica`). Lineamientos de control zoosanitario y exportación de ganado bovino en México.
-- **SADER** — Secretaría de Agricultura y Desarrollo Rural (`gob.mx/agricultura`). Catálogos nacionales del sector pecuario.
-- **SINIIGA** — Sistema Nacional de Identificación Individual de Ganado. Estándar de arete oficial de 8 dígitos para trazabilidad bovina.
-- **SIAP / Datos Abiertos de México** — Servicio de Información Agroalimentaria y Pesquera (`gob.mx/siap`, `datos.gob.mx`). Distribución ganadera en las 32 entidades federativas de la República Mexicana.
-- **Documentación Técnica** — Python Standard Library (`time.perf_counter_ns`, `csv`, `hashlib`, `unicodedata`) y Streamlit Framework (`docs.streamlit.io`).
+- Anthropic. (2026). *Claude* [Modelo de lenguaje grande]. https://claude.ai/
+- Cormen, T. H., Leiserson, C. E., Rivest, R. L., & Stein, C. (2022). *Introduction to algorithms* (4.ª ed.). MIT Press.
+- Google. (2026). *Gemini* [Modelo de lenguaje grande]. https://gemini.google.com/
+- Python Software Foundation. (2026). *Python Language Reference* (Versión 3.12) [Documentación de software]. https://docs.python.org/3/
+- Secretaría de Agricultura y Desarrollo Rural [SADER]. (2025). *Catálogos nacionales del sector pecuario y trazabilidad bovina*. Gobierno de México. https://www.gob.mx/agricultura
+- Servicio de Información Agroalimentaria y Pesquera [SIAP]. (2025). *Datos abiertos de producción ganadera nacional*. Gobierno de México. https://www.gob.mx/siap
+- Servicio Nacional de Sanidad, Inocuidad y Calidad Agroalimentaria [SENASICA]. (2025). *Lineamientos de control zoosanitario y movilización para exportación de ganado bovino*. Gobierno de México. https://www.gob.mx/senasica
+- Sistema Nacional de Identificación Individual de Ganado [SINIIGA]. (2025). *Manual operativo del identificador oficial de arete bovino*. Confederación Nacional de Organizaciones Ganaderas. https://www.siniiga.org.mx/
+- Snowflake Inc. (2026). *Streamlit Documentation* [Documentación de framework]. https://docs.streamlit.io/
         """
     )
 
