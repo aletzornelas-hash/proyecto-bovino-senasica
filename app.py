@@ -1076,4 +1076,919 @@ def pantalla_login():
 
         with tab_registro:
             with st.form("form_registro", clear_on_submit=True):
-                nuevo_usuario = st.text_input
+                nuevo_usuario = st.text_input("Usuario", key="reg_usuario")
+                nueva_pass = st.text_input(
+                    "Contraseña", type="password", key="reg_password"
+                )
+                confirmar = st.text_input(
+                    "Confirmar Contraseña",
+                    type="password",
+                    key="reg_confirmar",
+                )
+                crear = st.form_submit_button(
+                    "✅ CREAR CUENTA",
+                    key="btn_registrar",
+                    use_container_width=True,
+                )
+            if crear:
+                ok, mensaje = registrar_usuario(
+                    nuevo_usuario, nueva_pass, confirmar
+                )
+                if ok:
+                    st.success(
+                        f"✅ Cuenta «{mensaje}» creada correctamente. Ahora vaya a la pestaña "
+                        "«Iniciar Sesión» para entrar."
+                    )
+                else:
+                    st.error(f"⚠️ {mensaje}")
+
+        st.button(
+            "👤 Iniciar Sesión como Invitado",
+            key="btn_invitado",
+            on_click=entrar_como_invitado,
+            use_container_width=True,
+        )
+        st.caption(
+            "El modo invitado usa una sesión temporal con su Método Alfa personal en cero."
+        )
+
+
+# ----------------------------------------------------------------------------
+# PANEL LATERAL IZQUIERDO (SIDEBAR) Y ENCABEZADO
+# ----------------------------------------------------------------------------
+def renderizar_sidebar():
+    with st.sidebar:
+        st.markdown(
+            "<div class='sidebar-badge'>"
+            "<div style='color:#00f3ff;font-weight:700;letter-spacing:1.5px;'>🐄 SINIIGA · HUD</div>"
+            f"<div style='margin-top:6px;'>🟢 <b>Operador:</b> {html.escape(st.session_state.usuario_activo)}</div>"
+            f"<div>🕒 <b>Ingreso:</b> {st.session_state.hora_login}</div>"
+            f"<div>💾 <b>Base RAM:</b> {html.escape(st.session_state.dataset_activo or 'Sin cargar')}</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("### 🧭 Navegación")
+        ventana = st.radio(
+            "Seleccione una ventana:",
+            [
+                "🖥️ 1. Carga RAM y Muestra",
+                "⚡ 2. Ordenación y Método Alfa",
+                "🔍 3. Radar de Búsqueda",
+                "📜 4. Bitácoras y Descargas",
+                "📚 5. Referencias y Autores",
+            ],
+            label_visibility="collapsed",
+        )
+
+        st.divider()
+        st.button(
+            "🚪 Cerrar Sesión",
+            key="btn_logout",
+            on_click=cerrar_sesion,
+            use_container_width=True,
+        )
+        st.caption("UAEM · Métodos de Ordenación y Búsqueda")
+    return ventana
+
+
+def seccion_encabezado():
+    st.markdown(CSS, unsafe_allow_html=True)
+    datos_hero = st.session_state.datos_actuales
+    m_actual = st.session_state.cantidad_muestra
+    if datos_hero:
+        chip_bovinos = f"🐄 {fmt(len(datos_hero))} BOVINOS"
+        chip_muestra = f"📊 MUESTRA {m_actual} + {m_actual}"
+    else:
+        chip_bovinos = "🐄 BASE: 15,000 O 30,000 BOVINOS"
+        chip_muestra = f"📊 MUESTRA 10–60 REGISTROS"
+
+    st.markdown(
+        "<div class='hero'><div class='hero-sup'>SADER · SENASICA · SINIIGA · PADRÓN NACIONAL (32 ESTADOS)</div>"
+        "<div class='hero-title'>PROYECTO 2: RASTREO E INVENTARIO BOVINO PARA EXPORTACIÓN</div>"
+        "<div class='hero-sub'>Consola de Telemetría en Memoria RAM · Algoritmos de Ordenación y Búsqueda</div>"
+        f"<div class='hero-chips'><span>{chip_bovinos}</span><span>🗺️ 32 ESTADOS</span>"
+        f"<span>⏱️ NANOSEGUNDOS (ns)</span><span>{chip_muestra}</span></div></div>",
+        unsafe_allow_html=True,
+    )
+
+
+# ----------------------------------------------------------------------------
+# VENTANA 1: CARGA MANUAL / LOCAL EN RAM Y MUESTRA (10 EN 10 HASTA 60)
+# ----------------------------------------------------------------------------
+def cargar_dataset_local(nombre_archivo):
+    st.session_state.error_carga = None
+    ruta = BASE_DIR / nombre_archivo
+    if not ruta.exists():
+        st.session_state.error_carga = (
+            f"No se encontró '{nombre_archivo}' junto a app.py."
+        )
+        return
+    try:
+        datos, t_ns = cargar_datos_ram(str(ruta))
+        if len(datos) not in TAMANOS_PERMITIDOS:
+            raise ValueError(
+                f"El archivo tiene {fmt(len(datos))} registros; solo se admiten 15,000 o 30,000."
+            )
+    except Exception as e:
+        st.session_state.error_carga = (
+            f"No se pudo cargar '{nombre_archivo}': {e}"
+        )
+        return
+    guardar_datos_cargados(datos, t_ns, nombre_archivo)
+
+
+def seccion_carga_y_muestra():
+    st.subheader("🖥️ Infraestructura de Carga en Memoria RAM y Muestra")
+
+    ruta_contexto = BASE_DIR / ARCHIVO_CONTEXTO
+    with st.expander(
+        "📄 Ver Contexto Institucional del Proyecto (SENASICA / SADER)",
+        expanded=False,
+    ):
+        if ruta_contexto.exists():
+            texto_ctx = ruta_contexto.read_text(encoding="utf-8-sig")
+            for linea in texto_ctx.splitlines():
+                linea = linea.strip()
+                if linea:
+                    st.write(linea)
+        else:
+            st.info(
+                "Padrón Nacional Zoosanitario de los 32 Estados de la República Mexicana para exportación bovina."
+            )
+
+    # --- Carga Manual con Validación Estricta ---
+    st.markdown("#### 📤 Carga Manual de Archivo CSV (15,000 o 30,000 registros)")
+    archivo_subido = st.file_uploader(
+        "Arrastre o seleccione su archivo CSV oficial de ganado (se validarán columnas, tipos de dato y exactitud de 15,000 o 30,000 filas):",
+        type=None,  # Acepta cualquier archivo para poder mostrar error claro si suben otra cosa
+        key="uploader_manual_csv",
+    )
+    if st.button(
+        "📥 Validar y Cargar Archivo Subido a Memoria RAM",
+        key="btn_cargar_manual",
+        disabled=archivo_subido is None,
+    ):
+        st.session_state.error_carga = None
+        try:
+            datos_m, t_ns_m = cargar_csv_manual_en_ram(archivo_subido)
+            guardar_datos_cargados(datos_m, t_ns_m, archivo_subido.name)
+            st.success(
+                f"✅ Archivo '{archivo_subido.name}' validado y cargado correctamente "
+                f"({fmt(len(datos_m))} registros)."
+            )
+        except ValueError as e:
+            st.session_state.error_carga = f"❌ Archivo rechazado: {e}"
+        except Exception as e:
+            st.session_state.error_carga = (
+                f"❌ Error inesperado al leer el archivo: {e}"
+            )
+
+    # --- Botones de carga rápida si los archivos existen en el servidor ---
+    disponibles = [
+        (nombre, etq)
+        for nombre, etq in DATASETS
+        if (BASE_DIR / nombre).exists()
+    ]
+    if disponibles:
+        with st.expander(
+            "⚡ Carga rápida desde archivos en el servidor (opcional)",
+            expanded=False,
+        ):
+            cols_loc = st.columns(len(disponibles))
+            for col, (nombre, etiqueta) in zip(cols_loc, disponibles):
+                with col:
+                    st.button(
+                        f"📥 Cargar {etiqueta} Registros ({nombre})",
+                        key=f"btn_cargar_{nombre}",
+                        on_click=cargar_dataset_local,
+                        args=(nombre,),
+                        use_container_width=True,
+                    )
+
+    if st.session_state.error_carga:
+        st.error(st.session_state.error_carga)
+
+    datos = st.session_state.datos_actuales
+    if datos is None:
+        st.info(
+            "Los datos todavía no están en memoria RAM. Suba un archivo CSV válido de 15,000 o 30,000 registros "
+            "para comenzar."
+        )
+        return
+
+    n = len(datos)
+    t = st.session_state.tiempo_carga_ns
+    archivo = st.session_state.dataset_activo
+    estados_unicos = len({r["estado_origen"] for r in datos})
+
+    fila_tarjetas([
+        tarjeta(
+            "🐄", "Registros en RAM", fmt(n), f"Archivo: {archivo}", "verde"
+        ),
+        tarjeta(
+            "🗺️",
+            "Cobertura Nacional",
+            f"{estados_unicos} Estados",
+            "República Mexicana",
+            "verde",
+        ),
+        tarjeta(
+            "🗂️",
+            "Columnas",
+            len(datos[0]),
+            "3 Claves (*) + 7 Informativas",
+            "verde",
+        ),
+        tarjeta(
+            "⏱️",
+            "Tiempo de Carga RAM",
+            f"{fmt(t)} ns",
+            "Reloj CPU perf_counter_ns",
+            "dorado",
+        ),
+    ])
+    st.success(
+        f"Se realizó la carga de los {fmt(n)} registros con sus {len(datos[0])} columnas a la estructura "
+        f"[Lista de Diccionarios en RAM] y le tomó [{t}] nanosegundos completar la acción."
+    )
+
+    campo = st.session_state.campo_ordenado
+    st.caption(
+        f"⚡ Orden actual en RAM: ordenado por [{campo}]"
+        if campo
+        else "⚡ Orden actual en RAM: original del archivo CSV (sin ordenar). Los campos clave llevan *."
+    )
+
+    # --- Selector de cantidad (10 en 10 hasta 60) + 2 ventanas (Primeros / Últimos) ---
+    st.divider()
+    c_sel, _ = st.columns([1.5, 2.5])
+    with c_sel:
+        m = st.select_slider(
+            "📊 Cantidad de registros a mostrar por ventana:",
+            options=OPCIONES_MUESTRA,
+            value=st.session_state.cantidad_muestra,
+            key="selector_cantidad_muestra",
+        )
+        st.session_state.cantidad_muestra = m
+
+    cfg = config_columnas()
+    tab_prim, tab_ult = st.tabs([
+        f"🔹 Primeros {m} registros (Reg# 1 a {m})",
+        f"🔸 Últimos {m} registros (Reg# {max(1, n - m + 1)} a {n})",
+    ])
+
+    with tab_prim:
+        mostrar_df(construir_tabla(datos[:m], 1), cfg)
+
+    with tab_ult:
+        ultimos = datos[-m:]
+        mostrar_df(construir_tabla(ultimos, n - len(ultimos) + 1), cfg)
+
+
+# ----------------------------------------------------------------------------
+# VENTANA 2: ORDENACIÓN Y MÉTODO ALFA (USUARIO VS GLOBAL)
+# ----------------------------------------------------------------------------
+def ejecutar_ordenacion(clave, automatica=False):
+    datos = list(st.session_state.datos_originales)
+    n = len(datos)
+    campo = CAMPOS_CLAVE[clave]
+    nombre, funcion = ALGORITMOS[clave]
+
+    ordenada, t_ns, comps, movs = funcion(datos, campo)
+
+    texto = (
+        f"Se ordenaron {fmt(n)} registros por el campo [{campo}] usando el método [{nombre}] "
+        f"en [{t_ns}] nanosegundos. Comparaciones: [{comps}], Intercambios/Movimientos: [{movs}]"
+    )
+    st.session_state.datos_actuales = ordenada
+    st.session_state.campo_ordenado = campo
+    st.session_state.conteo_metodos[nombre] += 1
+    incrementar_alfa_global(nombre)
+
+    st.session_state.reporte_orden = texto
+    st.session_state.ultima_orden = dict(
+        campo=campo, nombre=nombre, t_ns=t_ns, comps=comps, movs=movs
+    )
+    st.session_state.resultado_busqueda = None
+
+    escribir_bitacora(
+        BITACORA_ORDENACION,
+        (
+            "[Ordenación automática previa a una Búsqueda Binaria]\n"
+            if automatica
+            else ""
+        )
+        + texto,
+    )
+    registrar_evento(
+        "Ordenación Automática" if automatica else "Disparador Ordenación",
+        f"Método: {nombre} | Campo: {campo} | Comps: {fmt(comps)} | Movs: {fmt(movs)}",
+        t_ns,
+    )
+
+    if not st.session_state.csv_guardado:
+        guardar_csv_ordenado(ordenada)
+        st.session_state.csv_guardado = True
+        st.session_state.aviso_csv = (
+            f"Primera ejecución: se guardó '{archivo_ordenado()}' con los {fmt(n)} registros "
+            f"ordenados por [{campo}]."
+        )
+    return nombre, t_ns
+
+
+def disparar_ordenacion():
+    if st.session_state.datos_originales is None:
+        return
+    ejecutar_ordenacion(random.choice([1, 2, 3]))
+
+
+def renderizar_bloque_alfa(conteo_dict, titulo_bloque, sub_etiqueta):
+    st.markdown(f"#### {titulo_bloque}")
+    total = sum(conteo_dict.values())
+    maximo = max(conteo_dict.values()) if conteo_dict else 0
+    alfas = (
+        [nombre for nombre, v in conteo_dict.items() if v == maximo]
+        if maximo > 0
+        else []
+    )
+    cols = st.columns(len(ALGORITMOS))
+    for col, (clave, (nombre, _)) in zip(cols, ALGORITMOS.items()):
+        veces = conteo_dict.get(nombre, 0)
+        es_alfa = nombre in alfas
+        ancho = round(veces / maximo * 100) if maximo else 0
+        parte = round(veces / total * 100) if total else 0
+        col.markdown(
+            tarjeta(
+                "👑" if es_alfa else "⚙️",
+                nombre + (" · ALFA" if es_alfa else ""),
+                veces,
+                f"{CAMPOS_CLAVE[clave]} · {parte}% ({sub_etiqueta})",
+                "dorado" if es_alfa else "verde",
+                extra=f"<div class='barra'><div class='barra-in' style='width:{ancho}%'></div></div>",
+            ),
+            unsafe_allow_html=True,
+        )
+    if not alfas:
+        st.caption(f"Sin ejecuciones registradas aún en {sub_etiqueta}.")
+    elif len(alfas) == 1:
+        st.success(
+            f"👑 Método Alfa ({sub_etiqueta}): **{alfas[0]}** con **{maximo}** ejecución(es) de {total} totales."
+        )
+    else:
+        st.info(
+            f"👑 Empate de Método Alfa ({sub_etiqueta}) entre **{', '.join(alfas)}** ({maximo} c/u)."
+        )
+
+
+def seccion_ordenacion_y_alfa():
+    st.subheader("⚡ Disparador Aleatorio de Ordenación en RAM")
+    c1, c2 = st.columns([2, 1])
+    with c1:
+        st.button(
+            "🎲 Disparador Aleatorio de Ordenación",
+            key="btn_ordenar",
+            on_click=disparar_ordenacion,
+            use_container_width=True,
+        )
+    with c2:
+        st.button(
+            "🔄 Reiniciar Mi Método Alfa",
+            key="btn_reset_alfa",
+            on_click=reiniciar_alfa_personal,
+            use_container_width=True,
+        )
+
+    if st.session_state.datos_originales is None:
+        st.warning(AVISO_SIN_DATOS)
+        return
+
+    u = st.session_state.ultima_orden
+    if u:
+        fila_tarjetas([
+            tarjeta(
+                "🎯", "Campo Clave · Método", u["campo"], u["nombre"], "verde"
+            ),
+            tarjeta(
+                "⏱️", "Tiempo CPU (ns)", fmt(u["t_ns"]), "nanosegundos", "dorado"
+            ),
+            tarjeta(
+                "🔍", "Comparaciones", fmt(u["comps"]), "entre claves", "verde"
+            ),
+            tarjeta(
+                "🔁",
+                "Movimientos",
+                fmt(u["movs"]),
+                "asignaciones en RAM",
+                "marron",
+            ),
+        ])
+        st.success(st.session_state.reporte_orden)
+        if st.session_state.aviso_csv:
+            st.info(st.session_state.aviso_csv)
+    else:
+        st.caption(
+            "Presione el disparador para sortear al azar el campo clave (siniiga_id, peso_kg o fecha_vacunacion) y ejecutar su algoritmo."
+        )
+
+    st.divider()
+    st.subheader("🏆 Telemetría del Método Alfa (Por Usuario vs. Global)")
+
+    renderizar_bloque_alfa(
+        st.session_state.conteo_metodos,
+        f"👤 Registro Individual de: {st.session_state.usuario_activo}",
+        "Sesión Actual",
+    )
+    st.write("")
+    conteo_global = leer_alfa_global()
+    renderizar_bloque_alfa(
+        conteo_global,
+        "🌐 Registro Global Acumulado (Todos los Usuarios de la Página)",
+        "Histórico Global",
+    )
+
+
+# ----------------------------------------------------------------------------
+# VENTANA 3: DISPARADOR ALEATORIO DE BÚSQUEDA
+# ----------------------------------------------------------------------------
+def disparar_busqueda():
+    if st.session_state.datos_originales is None:
+        return
+    st.session_state.metodo_busqueda = random.choice(
+        ["Búsqueda Binaria", "Búsqueda Lineal"]
+    )
+    st.session_state.resultado_busqueda = None
+    limpiar_entradas()
+
+
+def ejecutar_busqueda(
+    metodo, campo, valor, valor_txt, estado_orden=None, aviso=None
+):
+    datos = st.session_state.datos_actuales
+    n = len(datos)
+    if metodo == "Búsqueda Binaria":
+        fila, reg, todos, t_ns, comps = busqueda_binaria(datos, campo, valor)
+        cabecera = (
+            "[FASE 3: DISPARADOR ALEATORIO DE BÚSQUEDA]\n"
+            f"Operador en turno: {st.session_state.usuario_activo}\n"
+            "Activando generador de aleatoriedad para la búsqueda del sistema...\n"
+            f"-> Método de búsqueda seleccionado aleatoriamente: [{metodo}]\n"
+            "[VALIDACIÓN DE SEGURIDAD]: Verificando estado físico de la memoria...\n"
+            f"El campo clave requerido para la búsqueda es: [{campo}]\n"
+            f"Estado del campo en memoria: {estado_orden or 'YA ORDENADO PREVIAMENTE.'}\n"
+            f"Introduzca el dato a buscar ({campo}): {valor_txt}\n"
+            "Ejecutando algoritmo de Búsqueda Binaria...\n"
+        )
+    else:
+        fila, reg, todos, t_ns, comps = busqueda_lineal(datos, campo, valor)
+        cabecera = (
+            f"Operador en turno: {st.session_state.usuario_activo}\n"
+            "Activando generador de aleatoriedad para la búsqueda del sistema...\n"
+            f"-> Método de búsqueda seleccionado aleatoriamente: [{metodo}]\n"
+            f"El campo seleccionado para la búsqueda es: [{campo}]\n"
+            f"Introduzca el dato a buscar del campo seleccionado ({campo}): {valor_txt}\n"
+            "Ejecutando algoritmo de Búsqueda Lineal...\n"
+        )
+    if fila is not None:
+        resultado = f"Dato encontrado en la posición indexada de memoria RAM [Fila {fila}].\n"
+    else:
+        resultado = "Dato NO encontrado: ningún registro de la memoria RAM coincide con el valor buscado.\n"
+    benchmark = (
+        f">>> BENCHMARKING DE BÚSQUEDA (Guardado en {BITACORA_BUSQUEDA}) <<<\n"
+        f'"Se realizó la búsqueda en {fmt(n)} registros por el campo [{campo}] usando el método de '
+        f'búsqueda [{metodo}] en [{t_ns}] nanosegundos. Comparaciones: [{comps}]"'
+    )
+    texto = cabecera + resultado + benchmark
+    escribir_bitacora(BITACORA_BUSQUEDA, texto)
+    registrar_evento(
+        f"Búsqueda ({metodo})",
+        f"Campo: {campo} | Buscado: '{valor_txt}' | {'Fila ' + str(fila) if fila else 'No encontrado'} | Comps: {fmt(comps)}",
+        t_ns,
+    )
+    st.session_state.resultado_busqueda = dict(
+        texto=texto,
+        fila=fila,
+        registro=reg,
+        todos=todos,
+        campo=campo,
+        metodo=metodo,
+        t_ns=t_ns,
+        comps=comps,
+        aviso=aviso,
+    )
+
+
+MAX_VALORES_AYUDA = 35
+
+
+def valores_disponibles(campo):
+    cache = st.session_state.valores_campo
+    if campo not in cache:
+        vals = {
+            str(r[campo]).strip() for r in st.session_state.datos_originales
+        }
+        clave = (
+            (lambda v: int(v))
+            if campo in CAMPOS_NUMERICOS
+            else normalizar_texto
+        )
+        cache[campo] = sorted((v for v in vals if v), key=clave)
+    return cache[campo]
+
+
+def texto_valores_disponibles(campo):
+    vals = valores_disponibles(campo)
+    texto = (
+        f"Valores disponibles en el padrón nacional ({len(vals)} distintos): "
+        + ", ".join(vals[:MAX_VALORES_AYUDA])
+    )
+    if len(vals) > MAX_VALORES_AYUDA:
+        texto += f" … (y {len(vals) - MAX_VALORES_AYUDA} más)"
+    return texto
+
+
+FORMATOS_CLAVE = {
+    "siniiga_id": (
+        "Formato requerido: Número entero de 8 dígitos sin espacios ni guiones "
+        "(Rango: 10000000 a 99999999)."
+    ),
+    "peso_kg": (
+        "Formato requerido: Número entero expresado en kilogramos sin decimales "
+        "(Rango en padrón: 280 a 800)."
+    ),
+    "fecha_vacunacion": (
+        "Formato requerido: Número entero en formato AAAAMMDD sin guiones ni diagonales "
+        "(Ej. 20260415)."
+    ),
+}
+
+
+def ejemplos_reales(campo, cantidad=5):
+    datos = st.session_state.datos_actuales
+    n = len(datos)
+    indices = [0, 14, n // 4, n // 2, n - 1]
+    paso = max(1, n // 11)
+    indices += list(range(paso, n, paso))
+    valores = []
+    for i in indices:
+        if 0 <= i < n and datos[i][campo] not in valores:
+            valores.append(datos[i][campo])
+        if len(valores) == cantidad:
+            break
+    return valores
+
+
+def formato_campo(campo):
+    if campo in FORMATOS_CLAVE:
+        return FORMATOS_CLAVE[campo]
+    if campo == "edad_meses":
+        edades = [r["edad_meses"] for r in st.session_state.datos_originales]
+        return (
+            "Formato requerido: Número entero de meses sin decimales "
+            f"(Rango en padrón: {min(edades)} a {max(edades)})."
+        )
+    return (
+        "Formato requerido: Texto (Padrón de los 32 estados de la República). "
+        "No distingue mayúsculas, acentos ni espacios extra y acepta coincidencias parciales."
+    )
+
+
+def guia_campo(campo):
+    ejemplos = ejemplos_reales(campo)
+    st.info(
+        f"{formato_campo(campo)}\n\n"
+        f"Ejemplos reales en memoria RAM listos para probar: [{', '.join(str(v) for v in ejemplos)}]"
+    )
+    return ejemplos
+
+
+def limpiar_busqueda():
+    limpiar_entradas()
+    st.session_state.resultado_busqueda = None
+
+
+def seccion_busqueda():
+    st.subheader("🔍 Radar y Disparador Aleatorio de Búsqueda")
+    st.button(
+        "🎲 Disparador Aleatorio de Búsqueda",
+        key="btn_buscar_azar",
+        on_click=disparar_busqueda,
+    )
+    if st.session_state.datos_originales is None:
+        st.warning(AVISO_SIN_DATOS)
+        return
+
+    metodo = st.session_state.metodo_busqueda
+    if metodo is None:
+        st.caption(
+            "Sortea al azar el método (Búsqueda Lineal o Búsqueda Binaria) y habilita el selector de campo."
+        )
+        return
+    st.markdown(f"### 🎯 Método sorteado: `{metodo}`")
+
+    ordenado = st.session_state.campo_ordenado
+    if metodo == "Búsqueda Binaria":
+        opciones = list(CAMPOS_CLAVE.values())
+        idx = opciones.index(ordenado) if ordenado in opciones else 0
+        campo = st.selectbox(
+            "Seleccione el Campo Clave donde desea buscar",
+            opciones,
+            index=idx,
+            key="campo_sel_binaria",
+        )
+        if campo != ordenado:
+            nombre = ALGORITMOS[CLAVE_DE_CAMPO[campo]][0]
+            actual = (
+                f"(ahora está ordenado por [{ordenado}])"
+                if ordenado
+                else "(aún no se ha ordenado nada)"
+            )
+            st.warning(
+                f"El campo [{campo}] no está ordenado en RAM {actual}. Al presionar Buscar se ordenará "
+                f"automáticamente con {nombre} y enseguida se ejecutará la Búsqueda Binaria."
+            )
+        else:
+            st.caption(f"✔ [{campo}] ya está ordenado en memoria RAM.")
+    else:
+        opciones = list(COLUMNAS)
+        idx = opciones.index(ordenado) if ordenado in opciones else 0
+        campo = st.selectbox(
+            "Seleccione el Campo (Clave o Informativo) donde desea buscar",
+            opciones,
+            index=idx,
+            key="campo_sel_lineal",
+        )
+
+    ejemplos = guia_campo(campo)
+    if campo not in CAMPOS_CLAVE.values():
+        st.caption(texto_valores_disponibles(campo))
+
+    if campo in CAMPOS_NUMERICOS:
+        valor = st.number_input(
+            f"Introduzca el dato numérico a buscar ({campo})",
+            min_value=0,
+            value=int(ejemplos[0]),
+            step=1,
+            format="%d",
+            key=f"valor_{campo}",
+        )
+    else:
+        valor_txt = st.text_input(
+            f"Introduzca el texto a buscar ({campo})", key=f"valor_{campo}"
+        )
+
+    b1, b2, _ = st.columns([1.2, 2, 3])
+    buscar = b1.button(
+        "🔍 Buscar Ahora", key="btn_buscar", use_container_width=True
+    )
+    b2.button(
+        "🧹 Limpiar / Reiniciar",
+        key="btn_limpiar",
+        on_click=limpiar_busqueda,
+        use_container_width=True,
+    )
+
+    if buscar:
+        if campo in CAMPOS_NUMERICOS:
+            valor_buscado, texto_valor = int(valor), str(int(valor))
+        else:
+            try:
+                valor_buscado, texto_valor = (
+                    parse_valor(campo, valor_txt),
+                    valor_txt.strip(),
+                )
+            except ValueError as e:
+                st.error(str(e))
+                return
+        estado, aviso = None, None
+        reordenado = (
+            metodo == "Búsqueda Binaria"
+            and campo != st.session_state.campo_ordenado
+        )
+        if reordenado:
+            nombre, t_orden = ejecutar_ordenacion(
+                CLAVE_DE_CAMPO[campo], automatica=True
+            )
+            estado = (
+                f"NO ESTABA ORDENADO. Se ordenó automáticamente con [{nombre}] "
+                f"en [{t_orden}] nanosegundos."
+            )
+            aviso = (
+                f"Se ordenó automáticamente por [{campo}] con {nombre} en {fmt(t_orden)} ns "
+                "antes de ejecutar la Búsqueda Binaria."
+            )
+        ejecutar_busqueda(
+            metodo, campo, valor_buscado, texto_valor, estado, aviso
+        )
+        if reordenado:
+            st.rerun()
+
+    res = st.session_state.resultado_busqueda
+    if res and res["campo"] == campo and res["metodo"] == metodo:
+        if res["aviso"]:
+            st.info("🔄 " + res["aviso"])
+        fila_tarjetas([
+            tarjeta(
+                "🔎", "Método · Campo", res["metodo"], res["campo"], "verde"
+            ),
+            tarjeta(
+                "⏱️",
+                "Tiempo Búsqueda (ns)",
+                fmt(res["t_ns"]),
+                "nanosegundos",
+                "dorado",
+            ),
+            tarjeta(
+                "⚖️",
+                "Comparaciones",
+                fmt(res["comps"]),
+                "evaluadas en RAM",
+                "marron",
+            ),
+        ])
+        st.code(res["texto"], language="text")
+        if res["fila"] is None:
+            st.warning(
+                "No se localizó ningún registro con ese dato en la memoria RAM."
+            )
+        else:
+            mostrar_ficha(res["registro"], res["fila"])
+            if len(res["todos"]) > 1:
+                st.info(
+                    f"Se encontraron {len(res['todos'])} registros con ese valor; "
+                    "la credencial muestra la primera ocurrencia localizada."
+                )
+                with st.expander(
+                    f"Ver todas las coincidencias ({len(res['todos'])} registros)"
+                ):
+                    filas = [
+                        {"Fila": f, **{c: r[c] for c in COLUMNAS}}
+                        for f, r in res["todos"]
+                    ]
+                    mostrar_df(pd.DataFrame(filas))
+
+
+# ----------------------------------------------------------------------------
+# VENTANA 4: CENTRO DE BITÁCORAS (PERSONAL VS GLOBAL) Y DESCARGAS
+# ----------------------------------------------------------------------------
+def seccion_bitacoras_y_descargas():
+    st.subheader("📜 Centro de Bitácoras y Registro de Actividad")
+
+    sub_p, sub_g, sub_d = st.tabs([
+        "👤 Mi Historial (Sesión Actual)",
+        "🌐 Historial Global (Todos los Visitantes)",
+        "⬇️ Descarga de Archivos Oficiales",
+    ])
+
+    with sub_p:
+        st.markdown(
+            f"#### Registro de acciones de **{st.session_state.usuario_activo}**"
+        )
+        hist = st.session_state.historial_personal
+        if not hist:
+            st.info("Aún no ha ejecutado acciones en esta sesión.")
+        else:
+            mostrar_df(pd.DataFrame(hist))
+            if st.button("🗑️ Limpiar Mi Historial Personal", key="btn_clr_hist"):
+                st.session_state.historial_personal = []
+                st.rerun()
+
+    with sub_g:
+        st.markdown(
+            "#### Bitácora Global de Todos los Usuarios que Han Entrado a la Página"
+        )
+        ruta_g = BASE_DIR / BITACORA_GLOBAL
+        if ruta_g.exists():
+            lineas = [
+                l.strip()
+                for l in ruta_g.read_text(encoding="utf-8").splitlines()
+                if l.strip()
+            ]
+            st.metric(
+                "Total de Acciones Globales Registradas", fmt(len(lineas))
+            )
+            st.code(
+                "\n".join(reversed(lineas[-150:])),
+                language="text",
+            )
+        else:
+            st.info("Aún no hay registros globales en el servidor.")
+
+    with sub_d:
+        st.markdown("#### Descargar Bitácoras y CSV Ordenado")
+        archivos = [
+            (BITACORA_ORDENACION, "text/plain", "Bitácora de Ordenación"),
+            (BITACORA_BUSQUEDA, "text/plain", "Bitácora de Búsqueda"),
+            (BITACORA_GLOBAL, "text/plain", "Bitácora Global de Usuarios"),
+            (archivo_ordenado(), "text/csv", "CSV Ordenado"),
+        ]
+        cols = st.columns(2)
+        for i, (nombre, mime, etiqueta) in enumerate(archivos):
+            ruta = BASE_DIR / nombre
+            col = cols[i % 2]
+            if ruta.exists():
+                col.download_button(
+                    f"⬇️ Descargar {etiqueta} ({nombre})",
+                    data=ruta.read_bytes(),
+                    file_name=nombre,
+                    mime=mime,
+                    key=f"dl_{nombre}",
+                    use_container_width=True,
+                )
+            else:
+                col.caption(
+                    f"⏳ {etiqueta} (`{nombre}`): se habilitará en cuanto ejecute la acción correspondiente."
+                )
+
+
+# ----------------------------------------------------------------------------
+# VENTANA 5: REFERENCIAS Y AUTORES
+# ----------------------------------------------------------------------------
+def seccion_referencias_y_autores():
+    st.subheader("📚 Referencias Oficiales y Equipo de Desarrollo")
+
+    st.markdown("#### 👥 Autores del Proyecto")
+    fila_tarjetas([
+        tarjeta(
+            "👨‍💻",
+            "Autor · Desarrollo y Arquitectura",
+            "Alejandro Martín del Campo Ornelas",
+            "Licenciatura en Informática · UAEM",
+            "verde",
+        ),
+        tarjeta(
+            "👨‍💻",
+            "Autor · Datos e Infraestructura",
+            "Adiel Isaí Rodríguez Ruiz",
+            "Licenciatura en Informática · UAEM",
+            "verde",
+        ),
+    ])
+
+    st.markdown("#### 🤖 Asistentes de Inteligencia Artificial")
+    fila_tarjetas([
+        tarjeta(
+            "✨",
+            "Asistencia de Ingeniería IA",
+            "Gemini (Google)",
+            "Diseño de interfaz HUD, validaciones, arquitectura y despliegue",
+            "morado",
+        ),
+        tarjeta(
+            "🧠",
+            "Asistencia de Ingeniería IA",
+            "Claude AI (Anthropic)",
+            "Implementación de algoritmos desde cero, refactorización y pruebas",
+            "dorado",
+        ),
+    ])
+
+    st.divider()
+    st.markdown("#### 🏛️ Referencias y Fuentes de Datos Oficiales")
+    st.markdown(
+        """
+- **SENASICA** — Servicio Nacional de Sanidad, Inocuidad y Calidad Agroalimentaria (`gob.mx/senasica`). Lineamientos de control zoosanitario y exportación de ganado bovino en México.
+- **SADER** — Secretaría de Agricultura y Desarrollo Rural (`gob.mx/agricultura`). Catálogos nacionales del sector pecuario.
+- **SINIIGA** — Sistema Nacional de Identificación Individual de Ganado. Estándar de arete oficial de 8 dígitos para trazabilidad bovina.
+- **SIAP / Datos Abiertos de México** — Servicio de Información Agroalimentaria y Pesquera (`gob.mx/siap`, `datos.gob.mx`). Distribución ganadera en las 32 entidades federativas de la República Mexicana.
+- **Documentación Técnica** — Python Standard Library (`time.perf_counter_ns`, `csv`, `hashlib`, `unicodedata`) y Streamlit Framework (`docs.streamlit.io`).
+        """
+    )
+
+    st.caption(
+        "Asignatura: Métodos de Ordenación y Búsqueda · Universidad Autónoma del Estado de Morelos (UAEM)"
+    )
+
+
+# ----------------------------------------------------------------------------
+# FLUJO PRINCIPAL
+# ----------------------------------------------------------------------------
+def main():
+    st.set_page_config(
+        page_title="Telemetría Bovina SENASICA",
+        page_icon="🐄",
+        layout="wide",
+    )
+    iniciar_estado()
+
+    if not st.session_state.usuario_activo:
+        pantalla_login()
+        return
+
+    ventana = renderizar_sidebar()
+    seccion_encabezado()
+
+    if ventana == "🖥️ 1. Carga RAM y Muestra":
+        seccion_carga_y_muestra()
+    elif ventana == "⚡ 2. Ordenación y Método Alfa":
+        seccion_ordenacion_y_alfa()
+    elif ventana == "🔍 3. Radar de Búsqueda":
+        seccion_busqueda()
+    elif ventana == "📜 4. Bitácoras y Descargas":
+        seccion_bitacoras_y_descargas()
+    elif ventana == "📚 5. Referencias y Autores":
+        seccion_referencias_y_autores()
+
+
+if __name__ == "__main__":
+    main()
